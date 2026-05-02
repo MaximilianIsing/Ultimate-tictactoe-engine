@@ -1,12 +1,12 @@
 'use strict';
 
-// Ultimate Tic-Tac-Toe engine.
-// State is represented with bit-boards (9 bits per small board) for speed.
-// MCTS (UCT) with heuristic-guided rollouts.
+// Ultimate Tic-Tac-Toe engine v2.
+// MCTS with: cached ln() for UCT, early rollout cutoff + eval outcome,
+// seeded RNG for reproducibility per worker (root-parallel diversity).
 // Wrapped in an IIFE so re-evaluation (e.g. worker recreation, hot reload) is safe.
 
 (function () {
-  if (typeof self !== 'undefined' && self.UTTTEngine) return; // already loaded
+  if (typeof self !== 'undefined' && self.UTTTEngineV2) return; // already loaded
 
 const WIN_LINES = [
   0b000000111, 0b000111000, 0b111000000,
@@ -192,6 +192,34 @@ class UTTTState {
 const LOG2 = new Int8Array(513);
 for (let i = 0; i < 9; i++) LOG2[1 << i] = i;
 
+// Precomputed ln(n) for UCT — avoids Math.log hot path (falls back for huge visit counts).
+const LN_CACHE_MAX = 1 << 18;
+const LN_CACHE = new Float64Array(LN_CACHE_MAX);
+for (let i = 1; i < LN_CACHE_MAX; i++) LN_CACHE[i] = Math.log(i);
+function fastLn(n) {
+  return n > 0 && n < LN_CACHE_MAX ? LN_CACHE[n] : Math.log(Math.max(n, 1));
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function rng() {
+    a |= 0;
+    a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// When rollout hits depth cap, decide outcome from static eval (side-to-move perspective → winner 1|2|3).
+function rolloutOutcomeFromEval(state) {
+  const ev = staticEval(state);
+  const forMover = state.toMove === 1 ? ev : -ev;
+  if (forMover > 0.1) return state.toMove;
+  if (forMover < -0.1) return 3 - state.toMove;
+  return 3;
+}
+
 // --- MCTS ---
 
 class MCTSNode {
@@ -208,7 +236,7 @@ class MCTSNode {
 
 function uctSelect(node, c) {
   let best = null, bestScore = -Infinity;
-  const lnN = Math.log(node.visits);
+  const lnN = fastLn(node.visits);
   const children = node.children;
   for (let i = 0, n = children.length; i < n; i++) {
     const ch = children[i];
@@ -228,7 +256,8 @@ function uctSelect(node, c) {
 //   4. Filter out moves that send opponent where they immediately win a small board
 //      (unless it would complete their meta-game already? we keep it simple: just avoid).
 //   5. Among remaining, weighted random toward strategic cells/boards.
-function pickRolloutMove(state, moves) {
+function pickRolloutMove(state, moves, rng) {
+  const rnd = rng || Math.random;
   const me = state.toMove;
   const myArr = me === 1 ? state.smallX : state.smallO;
   const opArr = me === 1 ? state.smallO : state.smallX;
@@ -297,7 +326,7 @@ function pickRolloutMove(state, moves) {
     total += w;
   }
 
-  let r = Math.random() * total;
+  let r = rnd() * total;
   for (let i = 0; i < moves.length; i++) {
     r -= weights[i];
     if (r <= 0) return moves[i];
@@ -386,6 +415,8 @@ class MCTSSearcher {
 
     this.root = new MCTSNode(null, null, rootMoves.slice(), rootState.toMove);
     this.nodeCount = 1;
+    this.rolloutCap = options.rolloutCap != null ? options.rolloutCap : 32;
+    this.rng = mulberry32((options.rngSeed !== undefined ? options.rngSeed : 0xC001D00D) | 0);
   }
 
   abort() { this.aborted = true; }
@@ -431,7 +462,7 @@ class MCTSSearcher {
 
       // 2. Expansion (capped by maxNodes)
       if (node.untried.length > 0 && work.winner === 0 && this.nodeCount < this.maxNodes) {
-        const idx = (Math.random() * node.untried.length) | 0;
+        const idx = (this.rng() * node.untried.length) | 0;
         const move = node.untried[idx];
         const last = node.untried.length - 1;
         node.untried[idx] = node.untried[last];
@@ -444,16 +475,29 @@ class MCTSSearcher {
         node = child;
       }
 
-      // 3. Rollout
-      while (work.winner === 0) {
+      // 3. Rollout (v2: depth cap + eval-based terminal)
+      let rolloutDepth = 0;
+      let winner;
+      while (true) {
+        if (work.winner !== 0) {
+          winner = work.winner;
+          break;
+        }
+        if (rolloutDepth >= this.rolloutCap) {
+          winner = rolloutOutcomeFromEval(work);
+          break;
+        }
         work.legalMoves(moveBuf);
-        if (moveBuf.length === 0) break;
-        const m = pickRolloutMove(work, moveBuf);
+        if (moveBuf.length === 0) {
+          winner = work.winner || 3;
+          break;
+        }
+        const m = pickRolloutMove(work, moveBuf, this.rng);
         work.applyMove(m);
+        rolloutDepth++;
       }
 
       // 4. Backprop
-      const winner = work.winner;
       let n = node;
       while (n) {
         n.visits++;
@@ -555,7 +599,7 @@ function buildResult(root, sims, elapsedMs, forPlayer, done) {
 
 // Expose for browser & worker contexts
 if (typeof self !== 'undefined') {
-  self.UTTTEngine = {
+  self.UTTTEngineV2 = {
     UTTTState,
     MCTSSearcher,
     mctsSearch,

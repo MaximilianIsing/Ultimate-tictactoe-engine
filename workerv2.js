@@ -1,12 +1,13 @@
 'use strict';
 
-importScripts('engine.js');
+importScripts('enginev2.js');
 
-const { UTTTState, MCTSSearcher } = self.UTTTEngine;
+const { UTTTState, MCTSSearcher } = self.UTTTEngineV2;
 
 let currentSearcher = null;
 let currentRequestId = -1;
 let lastProgressTime = 0;
+let currentWorkerIndex = 0;
 const PROGRESS_INTERVAL_MS = 200;
 const CHUNK_MS = 20;
 
@@ -25,9 +26,12 @@ self.onmessage = (e) => {
     currentSearcher = new MCTSSearcher(state, {
       budgetMs: msg.budgetMs || 5000,
       c: msg.c != null ? msg.c : 1.4,
+      rolloutCap: msg.rolloutCap != null ? msg.rolloutCap : 32,
+      rngSeed: msg.rngSeed != null ? msg.rngSeed : 0xC001D00D,
       maxNodes: msg.maxNodes || 600000,
     });
     currentRequestId = msg.requestId;
+    currentWorkerIndex = msg.workerIndex != null ? msg.workerIndex : 0;
     lastProgressTime = 0;
 
     setTimeout(driveSearch, 0);
@@ -42,13 +46,18 @@ function driveSearch() {
   const more = searcher.step(CHUNK_MS);
 
   if (searcher.aborted) {
-    self.postMessage({ type: 'aborted', requestId });
+    self.postMessage({ type: 'aborted', requestId, workerIndex: currentWorkerIndex });
     if (currentSearcher === searcher) currentSearcher = null;
     return;
   }
 
   if (!more) {
-    self.postMessage({ type: 'result', requestId, result: searcher.result(true) });
+    self.postMessage({
+      type: 'result',
+      requestId,
+      workerIndex: currentWorkerIndex,
+      result: searcher.result(true),
+    });
     if (currentSearcher === searcher) currentSearcher = null;
     return;
   }
@@ -56,7 +65,12 @@ function driveSearch() {
   const now = Date.now();
   if (now - lastProgressTime >= PROGRESS_INTERVAL_MS) {
     lastProgressTime = now;
-    self.postMessage({ type: 'progress', requestId, result: searcher.result(false) });
+    self.postMessage({
+      type: 'progress',
+      requestId,
+      workerIndex: currentWorkerIndex,
+      result: searcher.result(false),
+    });
   }
 
   setTimeout(driveSearch, 0);

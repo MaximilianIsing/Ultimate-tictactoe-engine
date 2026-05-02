@@ -1,0 +1,14 @@
+{
+  "name": "ultimate-tictactoe",
+  "version": "1.0.0",
+  "description": "Ultimate Tic-Tac-Toe with AI engine, online multiplayer, and game analysis",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}

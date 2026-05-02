@@ -5,151 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ultimate Tic-Tac-Toe</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="media/logo/logo256x256.png" type="image/png" />
 </head>
 <body>
-  <main class="app">
-    <header class="header">
-      <img src="media/logo/Logo256x256.png" class="header-logo" alt="Ultimate Tic-Tac-Toe" />
-      <h1>Ultimate Tic-Tac-Toe</h1>
-      <p class="subtitle">Human vs. Engine — analysis on the right.</p>
-    </header>
-
-    <div class="layout">
-      <section class="board-column">
-        <div class="status">
-          <div class="turn-indicator" id="turnIndicator">
-            <span class="turn-label">Turn:</span>
-            <span class="turn-mark" id="turnMark" data-mark="X">X</span>
-          </div>
-          <div class="book-label hidden" id="bookLabel"></div>
-          <div class="status-buttons">
-            <button id="undoBtn" class="btn-secondary" title="Undo last move">Undo</button>
-            <button id="resetBtn" class="btn-reset">New Game</button>
-          </div>
-        </div>
-
-        <div class="board-wrapper">
-          <div class="meta-board" id="metaBoard" aria-label="Ultimate tic-tac-toe board"></div>
-          <div class="winner-overlay hidden" id="winnerOverlay">
-            <div class="winner-card">
-              <div class="winner-mark" id="winnerMark"></div>
-              <div class="winner-text" id="winnerText">Player X wins!</div>
-              <button class="btn-reset" id="playAgainBtn">Play Again</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <aside class="analysis-panel" id="analysisPanel">
-        <div class="panel-section mode-picker">
-          <div class="segmented three" id="modePicker" role="radiogroup" aria-label="Mode">
-            <button class="seg-btn is-active" type="button" data-mode="play" role="radio" aria-checked="true">Play vs Engine</button>
-            <button class="seg-btn" type="button" data-mode="analysis" role="radio" aria-checked="false">Analysis</button>
-            <button class="seg-btn" type="button" data-mode="eve" role="radio" aria-checked="false">Engine vs Engine</button>
-          </div>
-        </div>
-
-        <div class="panel-section side-picker" id="sidePickerSection">
-          <div class="section-header">
-            <h3>You play as</h3>
-          </div>
-          <div class="segmented two" id="sidePicker" role="radiogroup" aria-label="Choose your side">
-            <button class="seg-btn is-active" type="button" data-side="x" data-mark="X" role="radio" aria-checked="true">X — go first</button>
-            <button class="seg-btn" type="button" data-side="o" data-mark="O" role="radio" aria-checked="false">O — go second</button>
-          </div>
-        </div>
-
-        <div class="panel-section budget-picker" id="budgetPickerSection" hidden>
-          <div class="section-header">
-            <h3>Thinking time</h3>
-            <span class="section-hint">per position</span>
-          </div>
-          <div class="segmented four" id="budgetPicker" role="radiogroup" aria-label="Engine thinking time">
-            <button class="seg-btn" type="button" data-budget="2000" role="radio" aria-checked="false">2s</button>
-            <button class="seg-btn is-active" type="button" data-budget="5000" role="radio" aria-checked="true">5s</button>
-            <button class="seg-btn" type="button" data-budget="30000" role="radio" aria-checked="false">30s</button>
-            <button class="seg-btn" type="button" data-budget="-1" role="radio" aria-checked="false" title="Engine thinks until you click Engine move or make a move">∞</button>
-          </div>
-        </div>
-
-        <div class="panel-section eve-budgets" id="eveBudgetsSection" hidden>
-          <div class="section-header">
-            <h3>Thinking time per engine</h3>
-          </div>
-          <div class="eve-budget-row">
-            <span class="side-tag" data-mark="X">X</span>
-            <div class="segmented four eve-budget" data-eve-side="x" role="radiogroup" aria-label="X engine thinking time">
-              <button class="seg-btn" type="button" data-budget="2000">2s</button>
-              <button class="seg-btn is-active" type="button" data-budget="5000">5s</button>
-              <button class="seg-btn" type="button" data-budget="30000">30s</button>
-              <button class="seg-btn" type="button" data-budget="-1" title="Engine thinks until you click Engine move">∞</button>
-            </div>
-          </div>
-          <div class="eve-budget-row">
-            <span class="side-tag" data-mark="O">O</span>
-            <div class="segmented four eve-budget" data-eve-side="o" role="radiogroup" aria-label="O engine thinking time">
-              <button class="seg-btn" type="button" data-budget="2000">2s</button>
-              <button class="seg-btn is-active" type="button" data-budget="5000">5s</button>
-              <button class="seg-btn" type="button" data-budget="30000">30s</button>
-              <button class="seg-btn" type="button" data-budget="-1" title="Engine thinks until you click Engine move">∞</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel-section eval-section">
-          <div class="eval-header">
-            <span class="eval-label">Evaluation</span>
-            <span class="eval-value" id="evalValue">0%</span>
-          </div>
-          <div class="eval-bar" aria-label="Position evaluation">
-            <div class="eval-fill" id="evalFill"></div>
-            <div class="eval-center"></div>
-          </div>
-          <div class="eval-legend">
-            <span data-mark="X">X advantage</span>
-            <span data-mark="O">O advantage</span>
-          </div>
-        </div>
-
-        <div class="panel-section engine-status">
-          <div class="status-line" id="engineStatus">Engine idle</div>
-          <div class="status-stats" id="engineStats">—</div>
-        </div>
-
-        <div class="panel-section top-moves">
-          <div class="section-header">
-            <h3>Top moves</h3>
-            <span class="section-hint">hover to preview</span>
-          </div>
-          <ol class="moves-list" id="topMovesList"></ol>
-        </div>
-
-        <div class="panel-section panel-buttons">
-          <button id="analyzeBtn" class="btn-secondary">Re-analyze</button>
-          <button id="botMoveBtn" class="btn-primary">Engine move</button>
-        </div>
-      </aside>
+  <nav class="sidebar" id="sidebar">
+    <a href="#/" class="sidebar-logo" aria-label="Home">
+      <img src="media/logo/logo256x256.png" alt="" class="sidebar-logo-img" />
+    </a>
+    <div class="sidebar-nav">
+      <a href="#/" class="nav-item active" data-page="home">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span class="nav-label">Home</span>
+      </a>
+      <a href="#/play/ai" class="nav-item" data-page="play">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="17" cy="10" r="1"/><circle cx="15" cy="13" r="1"/></svg>
+        <span class="nav-label">Play</span>
+      </a>
+      <a href="#/aivai" class="nav-item" data-page="aivai">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="9" height="12" rx="2"/><rect x="14" y="5" width="9" height="12" rx="2"/><rect x="4" y="9" width="3" height="4"/><rect x="17" y="9" width="3" height="4"/></svg>
+        <span class="nav-label">AI vs AI</span>
+      </a>
+      <a href="#/analysis" class="nav-item" data-page="analysis">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        <span class="nav-label">Analysis</span>
+      </a>
+      <a href="#/openings" class="nav-item" data-page="openings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        <span class="nav-label">Openings</span>
+      </a>
+      <a href="#/settings" class="nav-item" data-page="settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <span class="nav-label">Settings</span>
+      </a>
     </div>
+  </nav>
 
-    <section class="rules">
-      <details>
-        <summary>How to play & engine notes</summary>
-        <ol>
-          <li>Win a small board by getting three in a row.</li>
-          <li>The cell you play in determines which small board your opponent must play in next.</li>
-          <li>If sent to a board that's already won or full, you may play in any open board.</li>
-          <li>Win three small boards in a row to win the game.</li>
-        </ol>
-        <p class="rules-engine">
-          The engine runs Monte Carlo Tree Search with heuristic-guided rollouts, in a Web Worker.
-          Default budget is 5 seconds per move. Win% is from the side-to-move's perspective; the eval
-          bar is centered, with X advantage to the left and O advantage to the right.
-        </p>
-      </details>
-    </section>
+  <main class="main-content" id="content">
+    <!-- Pages render here -->
   </main>
 
   <script src="engine.js"></script>
+  <script src="enginev2.js"></script>
+  <script src="enginev3.js"></script>
+  <script src="online.js"></script>
   <script src="game.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
