@@ -1,0 +1,64 @@
+{
+  "lines": [
+    {
+      "name": "Classical Center",
+      "description": "The strongest opening — X seizes the center, O contests from a corner, X develops the target board.",
+      "variants": [
+        ["C:C", "C:TL", "TL:C"],
+        ["C:C", "C:TR", "TR:C"],
+        ["C:C", "C:BL", "BL:C"],
+        ["C:C", "C:BR", "BR:C"]
+      ]
+    },
+    {
+      "name": "Italian Game",
+      "description": "X opens center, O responds through an edge cell, creating open lines across the meta-board.",
+      "variants": [
+        ["C:C", "C:T", "T:C"],
+        ["C:C", "C:R", "R:C"],
+        ["C:C", "C:B", "B:C"],
+        ["C:C", "C:L", "L:C"]
+      ]
+    },
+    {
+      "name": "King's Indian",
+      "description": "X develops a corner board first, O claims the center, then X re-enters the center board to contest.",
+      "variants": [
+        ["TL:C", "C:C", "C:TL"],
+        ["TR:C", "C:C", "C:TR"],
+        ["BL:C", "C:C", "C:BL"],
+        ["BR:C", "C:C", "C:BR"]
+      ]
+    },
+    {
+      "name": "Fortress Defense",
+      "description": "After the center opening, X mirrors O's corner in the target board, trapping the opponent in one zone.",
+      "variants": [
+        ["C:C", "C:TL", "TL:TL"],
+        ["C:C", "C:TR", "TR:TR"],
+        ["C:C", "C:BL", "BL:BL"],
+        ["C:C", "C:BR", "BR:BR"]
+      ]
+    },
+    {
+      "name": "Scandinavian",
+      "description": "A bold corner-to-corner start — X stakes a deep claim in one board, then transitions through the center.",
+      "variants": [
+        ["TL:TL", "TL:C", "C:C"],
+        ["TR:TR", "TR:C", "C:C"],
+        ["BL:BL", "BL:C", "C:C"],
+        ["BR:BR", "BR:C", "C:C"]
+      ]
+    },
+    {
+      "name": "Hypermodern",
+      "description": "X develops from a corner, O seizes the center, then X strikes the opposite corner to create cross-board tension.",
+      "variants": [
+        ["TL:C", "C:C", "C:BR"],
+        ["TR:C", "C:C", "C:BL"],
+        ["BL:C", "C:C", "C:TR"],
+        ["BR:C", "C:C", "C:TL"]
+      ]
+    }
+  ]
+}

@@ -6,10 +6,10 @@
   --panel-border: rgba(255, 255, 255, 0.08);
   --text: #e8ecf6;
   --muted: #9aa3bd;
-  --x-color: #5cc8ff;
-  --x-glow: rgba(92, 200, 255, 0.55);
-  --o-color: #ff7ab8;
-  --o-glow: rgba(255, 122, 184, 0.55);
+  --x-color: #276caa;
+  --x-glow: rgba(39, 108, 170, 0.55);
+  --o-color: #b30707;
+  --o-glow: rgba(179, 7, 7, 0.55);
   --active: rgba(255, 215, 130, 0.18);
   --active-border: #ffd782;
   --inactive: rgba(255, 255, 255, 0.02);
@@ -25,11 +25,11 @@
 html, body { margin: 0; padding: 0; min-height: 100%; }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(92, 200, 255, 0.18), transparent 60%),
-    radial-gradient(900px 500px at 110% 110%, rgba(255, 122, 184, 0.18), transparent 60%),
+    radial-gradient(1200px 600px at 10% -10%, rgba(39, 108, 170, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgba(179, 7, 7, 0.18), transparent 60%),
     linear-gradient(160deg, var(--bg-1), var(--bg-2));
   min-height: 100vh;
   display: flex;
@@ -47,7 +47,19 @@ body {
   gap: 18px;
 }
 
-.header { text-align: center; }
+.header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.header-logo {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+}
 
 .header h1 {
   margin: 0;
@@ -95,6 +107,19 @@ body {
   gap: 10px;
 }
 
+.book-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.book-label.hidden { display: none; }
+.book-label .book-icon { width: 16px; height: 16px; vertical-align: -2px; margin-right: 5px; }
+
 .status-buttons { display: flex; gap: 8px; }
 
 .turn-indicator {
@@ -118,12 +143,12 @@ body {
 
 .turn-mark[data-mark="X"] {
   color: var(--x-color);
-  box-shadow: 0 0 0 1px rgba(92, 200, 255, 0.3), 0 0 18px var(--x-glow);
+  box-shadow: 0 0 0 1px rgba(39, 108, 170, 0.3), 0 0 18px var(--x-glow);
 }
 
 .turn-mark[data-mark="O"] {
   color: var(--o-color);
-  box-shadow: 0 0 0 1px rgba(255, 122, 184, 0.3), 0 0 18px var(--o-glow);
+  box-shadow: 0 0 0 1px rgba(179, 7, 7, 0.3), 0 0 18px var(--o-glow);
 }
 
 .btn-reset, .btn-primary, .btn-secondary {
@@ -148,12 +173,12 @@ body {
 .btn-reset:active, .btn-secondary:active, .btn-primary:active { transform: scale(0.97); }
 
 .btn-primary {
-  background: linear-gradient(135deg, rgba(92, 200, 255, 0.25), rgba(255, 122, 184, 0.25));
+  background: linear-gradient(135deg, rgba(39, 108, 170, 0.25), rgba(179, 7, 7, 0.25));
   border-color: rgba(255, 255, 255, 0.18);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, rgba(92, 200, 255, 0.4), rgba(255, 122, 184, 0.4));
+  background: linear-gradient(135deg, rgba(39, 108, 170, 0.4), rgba(179, 7, 7, 0.4));
 }
 
 button:disabled {
@@ -199,20 +224,23 @@ button:disabled {
 .small-board.won { background: var(--won-bg); }
 
 .small-board.won::after {
-  content: attr(data-winner);
+  content: "";
   position: absolute;
   inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: clamp(2.6rem, 8vw, 4.8rem);
-  font-weight: 900;
   pointer-events: none;
   opacity: 0.92;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  background-size: 55%;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
-.small-board.won[data-winner="X"]::after { color: var(--x-color); }
-.small-board.won[data-winner="O"]::after { color: var(--o-color); }
-.small-board.won[data-winner="-"]::after { content: ""; }
+.small-board.won[data-winner="X"]::after {
+  background-image: url('media/pieces/X256x256.png');
+}
+.small-board.won[data-winner="O"]::after {
+  background-image: url('media/pieces/O256x256.png');
+}
+.small-board.won[data-winner="-"]::after { }
 
 .cell {
   appearance: none;
@@ -248,6 +276,14 @@ button:disabled {
   text-shadow: 0 0 12px var(--o-glow);
 }
 
+.piece-img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
 .cell.placed { animation: pop 220ms cubic-bezier(0.2, 1.2, 0.4, 1); }
 .cell.last-move {
   box-shadow: inset 0 0 0 2px rgba(255, 215, 130, 0.55);
@@ -280,6 +316,18 @@ button:disabled {
 }
 
 .small-board.won .cell { opacity: 0.18; }
+.small-board.won .cell:has(.cell-classification) { opacity: 0.45; }
+
+.cell-classification {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: clamp(12px, 45%, 22px);
+  height: clamp(12px, 45%, 22px);
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
 
 .winner-overlay {
   position: absolute;
@@ -305,6 +353,8 @@ button:disabled {
 }
 
 .winner-mark { font-size: 4rem; font-weight: 900; line-height: 1; }
+.winner-piece { width: 80px; height: 80px; object-fit: contain; }
+.turn-piece { width: 22px; height: 22px; object-fit: contain; }
 .winner-mark[data-mark="X"] { color: var(--x-color); text-shadow: 0 0 26px var(--x-glow); }
 .winner-mark[data-mark="O"] { color: var(--o-color); text-shadow: 0 0 26px var(--o-glow); }
 .winner-mark[data-mark="-"] { color: var(--muted); font-size: 2.4rem; }
@@ -387,11 +437,11 @@ button:disabled {
 }
 .side-tag[data-mark="X"] {
   color: var(--x-color);
-  box-shadow: 0 0 0 1px rgba(92, 200, 255, 0.3), 0 0 12px var(--x-glow);
+  box-shadow: 0 0 0 1px rgba(39, 108, 170, 0.3), 0 0 12px var(--x-glow);
 }
 .side-tag[data-mark="O"] {
   color: var(--o-color);
-  box-shadow: 0 0 0 1px rgba(255, 122, 184, 0.3), 0 0 12px var(--o-glow);
+  box-shadow: 0 0 0 1px rgba(179, 7, 7, 0.3), 0 0 12px var(--o-glow);
 }
 
 .seg-btn {
@@ -422,12 +472,12 @@ button:disabled {
 
 .seg-btn[data-mark="X"].is-active {
   color: var(--x-color);
-  box-shadow: inset 0 0 0 1px rgba(92, 200, 255, 0.35), 0 0 14px rgba(92, 200, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(39, 108, 170, 0.35), 0 0 14px rgba(39, 108, 170, 0.2);
 }
 
 .seg-btn[data-mark="O"].is-active {
   color: var(--o-color);
-  box-shadow: inset 0 0 0 1px rgba(255, 122, 184, 0.35), 0 0 14px rgba(255, 122, 184, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(179, 7, 7, 0.35), 0 0 14px rgba(179, 7, 7, 0.2);
 }
 
 .eval-header {

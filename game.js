@@ -7,11 +7,51 @@
   // this as effectively infinite; only progress messages will arrive.
   const UNLIMITED_BUDGET_MS = Number.MAX_SAFE_INTEGER;
 
+  // --- Book moves ---
+  let bookLines = [];
+  const LABEL_TO_IDX = { TL: 0, T: 1, TR: 2, L: 3, C: 4, R: 5, BL: 6, B: 7, BR: 8 };
+  function parseMoveLabel(label) {
+    const [board, cell] = label.split(':');
+    return LABEL_TO_IDX[board] * 9 + LABEL_TO_IDX[cell];
+  }
+  fetch('bookmoves.json')
+    .then(r => r.json())
+    .then(data => {
+      for (const line of (data.lines || [])) {
+        for (const variant of (line.variants || [])) {
+          bookLines.push({
+            name: line.name,
+            description: line.description || '',
+            moves: variant.map(parseMoveLabel),
+          });
+        }
+      }
+    })
+    .catch(() => {});
+
+  function getBookMatch(moveHistory, newMove) {
+    const seq = moveHistory.map(h => h.moveInt);
+    seq.push(newMove);
+    let bestMatch = null;
+    for (const line of bookLines) {
+      if (seq.length > line.moves.length) continue;
+      let ok = true;
+      for (let i = 0; i < seq.length; i++) {
+        if (seq[i] !== line.moves[i]) { ok = false; break; }
+      }
+      if (ok && (!bestMatch || line.moves.length >= bestMatch.moves.length)) {
+        bestMatch = line;
+      }
+    }
+    return bestMatch;
+  }
+
   // --- DOM refs ---
   const metaBoardEl = document.getElementById('metaBoard');
   const turnMarkEl = document.getElementById('turnMark');
   const resetBtn = document.getElementById('resetBtn');
   const undoBtn = document.getElementById('undoBtn');
+  const bookLabelEl = document.getElementById('bookLabel');
   const winnerOverlay = document.getElementById('winnerOverlay');
   const winnerMarkEl = document.getElementById('winnerMark');
   const winnerTextEl = document.getElementById('winnerText');
@@ -57,6 +97,50 @@
   let currentAnalysis = null; // latest analysis result
   let analysisRequestId = 0;
   let hoveredMove = null; // move int currently being previewed
+  let forceShowAnalysis = false;
+
+  const CLASSIFICATION_ICONS = {
+    brilliant: 'media/classifications/Brilliant.png',
+    great: 'media/classifications/Great.png',
+    best: 'media/classifications/Best.png',
+    okay: 'media/classifications/Okay.png',
+    miss: 'media/classifications/Miss.png',
+    inaccuracy: 'media/classifications/Inaccuracy.png',
+    mistake: 'media/classifications/Mistake.png',
+    blunder: 'media/classifications/Blunder.png',
+    book: 'media/classifications/Book.png',
+  };
+
+  function classifyMove(preMoveAnalysis, playedMoveInt) {
+    if (!preMoveAnalysis) return null;
+    if (preMoveAnalysis.forced) return null;
+    const top = preMoveAnalysis.topMoves;
+    if (!top || top.length < 2) return null;
+    const totalVisits = top.reduce((s, m) => s + (m.visits || 0), 0);
+    if (totalVisits < 50) return null;
+
+    const bestWR = top[0].winRate;
+    const legalCount = preMoveAnalysis.legalMoveCount || top.length;
+    const playedIdx = top.findIndex(m => m.move === playedMoveInt);
+
+    if (playedIdx === 0) {
+      const gap = bestWR - top[1].winRate;
+      if (gap >= 0.10 && legalCount >= 12 && bestWR > 0.25 && bestWR < 0.85) return 'brilliant';
+      if (gap >= 0.05 && legalCount >= 5 && bestWR < 0.90) return 'great';
+      return 'best';
+    }
+
+    const playedWR = playedIdx >= 0 ? top[playedIdx].winRate
+      : Math.max(0, (top[top.length - 1]?.winRate || 0) - 0.05);
+    const delta = bestWR - playedWR;
+
+    if (delta > 0.20 || (bestWR >= 0.60 && playedWR < 0.40)) return 'blunder';
+    if (delta > 0.12) return 'mistake';
+    if (delta > 0.06) return 'inaccuracy';
+    if (delta > 0.03 && playedWR >= 0.40) return 'miss';
+    if (delta > 0.03) return 'inaccuracy';
+    return 'okay';
+  }
 
   function isUnlimited() { return getCurrentBudgetMs() >= 1e12; }
 
@@ -87,7 +171,9 @@
       state: state.serialize(),
       budgetMs: budgetMs != null ? budgetMs : getCurrentBudgetMs(),
     });
-    setEngineStatus('Engine thinking…', '');
+    if (shouldShowAnalysisUI()) {
+      setEngineStatus('Engine thinking…', '');
+    }
   }
 
   function abortAnalysis() {
@@ -138,12 +224,16 @@
     return false;
   }
 
-  // Whether the engine should analyze the current position automatically.
-  // - Analysis mode: always yes (so the user sees engine analysis for every position).
-  // - Play mode: only when it's the engine's turn — your turn is yours alone.
+  // Always analyze so move classification data is available for all positions.
   function shouldAutoAnalyze() {
     if (state.winner !== 0) return false;
+    return true;
+  }
+
+  function shouldShowAnalysisUI() {
+    if (forceShowAnalysis) return true;
     if (mode === 'analysis') return true;
+    if (mode === 'eve') return true;
     return isBotTurn();
   }
 
@@ -156,11 +246,16 @@
     return true;
   }
 
-  function applyMove(boardIdx, cellIdx) {
+  function applyMove(boardIdx, cellIdx, preMoveAnalysis) {
     const player = state.toMove;
     const prevActiveBoard = state.activeBoard;
-    state.applyMove(boardIdx * 9 + cellIdx);
-    history.push({ boardIdx, cellIdx, player, prevActiveBoard });
+    const moveInt = boardIdx * 9 + cellIdx;
+    const bookMatch = getBookMatch(history, moveInt);
+    const classification = bookMatch ? 'book' : classifyMove(preMoveAnalysis, moveInt);
+    const bookName = bookMatch ? bookMatch.name : null;
+    const bookDesc = bookMatch ? bookMatch.description : null;
+    state.applyMove(moveInt);
+    history.push({ boardIdx, cellIdx, player, prevActiveBoard, classification, moveInt, bookName, bookDesc });
     lastMove = { boardIdx, cellIdx };
   }
 
@@ -171,14 +266,16 @@
     const cellIdx = Number(cell.dataset.cellIndex);
     if (!isLegalUserMove(boardIdx, cellIdx)) return;
 
+    const preMoveAnalysis = currentAnalysis;
     abortAnalysis();
-    applyMove(boardIdx, cellIdx);
+    applyMove(boardIdx, cellIdx, preMoveAnalysis);
     afterMoveChanged();
   }
 
   function afterMoveChanged() {
     hoveredMove = null;
     currentAnalysis = null;
+    forceShowAnalysis = false;
     render();
 
     if (state.winner !== 0) {
@@ -192,7 +289,8 @@
 
     if (shouldAutoAnalyze()) {
       startAnalysis();
-    } else {
+    }
+    if (!shouldShowAnalysisUI()) {
       setEngineStatus('Your move', '');
     }
   }
@@ -204,17 +302,18 @@
       const b = (m / 9) | 0;
       const c = m - b * 9;
       if (isLegalUserMove(b, c)) {
-        applyMove(b, c);
+        const preMoveAnalysis = currentAnalysis;
+        applyMove(b, c, preMoveAnalysis);
         afterMoveChanged();
       }
     }
-    // Otherwise, status is already set correctly by renderAnalysis(true).
   }
 
   // --- Rendering ---
   function render() {
-    turnMarkEl.textContent = state.toMove === 1 ? 'X' : 'O';
-    turnMarkEl.dataset.mark = state.toMove === 1 ? 'X' : 'O';
+    const turnChar = state.toMove === 1 ? 'X' : 'O';
+    turnMarkEl.dataset.mark = turnChar;
+    turnMarkEl.innerHTML = `<img src="media/pieces/${turnChar}256x256.png" class="turn-piece" alt="${turnChar}">`;
 
     for (let b = 0; b < 9; b++) {
       const small = smallEls[b];
@@ -236,15 +335,24 @@
         const cell = cellEls[b * 9 + c];
         const xBit = state.smallX[b] & (1 << c);
         const oBit = state.smallO[b] & (1 << c);
+        cell.textContent = '';
         if (xBit) {
-          cell.textContent = 'X';
           cell.dataset.mark = 'X';
+          const img = document.createElement('img');
+          img.src = 'media/pieces/X256x256.png';
+          img.className = 'piece-img';
+          img.alt = 'X';
+          img.draggable = false;
+          cell.appendChild(img);
         } else if (oBit) {
-          cell.textContent = 'O';
           cell.dataset.mark = 'O';
+          const img = document.createElement('img');
+          img.src = 'media/pieces/O256x256.png';
+          img.className = 'piece-img';
+          img.alt = 'O';
+          img.draggable = false;
+          cell.appendChild(img);
         } else {
-          // strip rank badge if present, restore empty
-          cell.textContent = '';
           delete cell.dataset.mark;
         }
         const playable = state.winner === 0 && winnerChar === null && isActive && !xBit && !oBit;
@@ -261,6 +369,8 @@
     // Show analysis hints
     applyAnalysisHints();
     renderAnalysis(false);
+    renderClassifications();
+    updateBookLabel();
     updateButtonStates();
   }
 
@@ -274,6 +384,7 @@
 
   function applyAnalysisHints() {
     clearHints();
+    if (!shouldShowAnalysisUI()) return;
     if (state.winner !== 0) return;
     if (!currentAnalysis || !currentAnalysis.topMoves) return;
 
@@ -297,17 +408,22 @@
   }
 
   function renderAnalysis(final) {
+    const showUI = shouldShowAnalysisUI();
     if (!currentAnalysis) {
-      setEval(null);
-      clearMovesList();
+      if (showUI) {
+        setEval(null);
+        clearMovesList();
+      }
       applyAnalysisHints();
       updateButtonStates();
       return;
     }
-    setEval(currentAnalysis.evaluation, currentAnalysis.forPlayer);
-    renderTopMoves(currentAnalysis.topMoves);
+    if (showUI) {
+      setEval(currentAnalysis.evaluation, currentAnalysis.forPlayer);
+      renderTopMoves(currentAnalysis.topMoves);
+    }
     applyAnalysisHints();
-    if (state.winner === 0) {
+    if (showUI && state.winner === 0) {
       let label;
       if (final) {
         if (mode === 'analysis') {
@@ -415,8 +531,9 @@
         const b = (cand.move / 9) | 0;
         const c = cand.move - b * 9;
         if (isLegalUserMove(b, c)) {
+          const preMoveAnalysis = currentAnalysis;
           abortAnalysis();
-          applyMove(b, c);
+          applyMove(b, c, preMoveAnalysis);
           afterMoveChanged();
         }
       });
@@ -429,9 +546,57 @@
     topMovesListEl.innerHTML = '';
   }
 
+  function updateBookLabel() {
+    let activeName = null;
+    let activeDesc = null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].bookName) {
+        activeName = history[i].bookName;
+        activeDesc = history[i].bookDesc;
+        break;
+      }
+      if (history[i].classification !== 'book') break;
+    }
+    if (activeName) {
+      bookLabelEl.innerHTML = `<img src="media/classifications/Book.png" class="book-icon" alt="Book">${activeName}`;
+      bookLabelEl.title = activeDesc || '';
+      bookLabelEl.classList.remove('hidden');
+    } else {
+      bookLabelEl.classList.add('hidden');
+    }
+  }
+
+  function renderClassifications() {
+    for (const cell of cellEls) {
+      cell.classList.remove('has-classification');
+      const old = cell.querySelector('.cell-classification');
+      if (old) old.remove();
+    }
+    for (const entry of history) {
+      if (!entry.classification) continue;
+      const idx = entry.boardIdx * 9 + entry.cellIdx;
+      const cell = cellEls[idx];
+      if (!cell) continue;
+      cell.classList.add('has-classification');
+      const badge = document.createElement('img');
+      badge.src = CLASSIFICATION_ICONS[entry.classification];
+      badge.className = 'cell-classification';
+      badge.alt = entry.classification;
+      badge.title = entry.bookName
+        ? `Book: ${entry.bookName}`
+        : entry.classification.charAt(0).toUpperCase() + entry.classification.slice(1);
+      badge.draggable = false;
+      cell.appendChild(badge);
+    }
+  }
+
   function showWinner(winner) {
     const ch = winner === 1 ? 'X' : winner === 2 ? 'O' : '-';
-    winnerMarkEl.textContent = ch === '-' ? 'Tie' : ch;
+    if (ch === '-') {
+      winnerMarkEl.textContent = 'Tie';
+    } else {
+      winnerMarkEl.innerHTML = `<img src="media/pieces/${ch}256x256.png" class="winner-piece" alt="${ch}">`;
+    }
     winnerMarkEl.dataset.mark = ch;
     winnerTextEl.textContent = ch === '-' ? "It's a tie!" : `Player ${ch} wins!`;
     winnerOverlay.classList.remove('hidden');
@@ -460,8 +625,7 @@
   function undo() {
     if (history.length === 0) return;
     abortAnalysis();
-    // Easiest robust undo: replay history minus one move.
-    const moves = history.slice(0, -1);
+    const oldEntries = history.slice(0, -1);
     state.smallX.fill(0);
     state.smallO.fill(0);
     state.bigState.fill(0);
@@ -474,12 +638,16 @@
     state.moveCount = 0;
     history.length = 0;
     lastMove = null;
-    for (const mv of moves) {
+    for (const entry of oldEntries) {
       const player = state.toMove;
       const prevActiveBoard = state.activeBoard;
-      state.applyMove(mv.boardIdx * 9 + mv.cellIdx);
-      history.push({ boardIdx: mv.boardIdx, cellIdx: mv.cellIdx, player, prevActiveBoard });
-      lastMove = { boardIdx: mv.boardIdx, cellIdx: mv.cellIdx };
+      state.applyMove(entry.boardIdx * 9 + entry.cellIdx);
+      history.push({
+        boardIdx: entry.boardIdx, cellIdx: entry.cellIdx, player, prevActiveBoard,
+        classification: entry.classification, moveInt: entry.moveInt,
+        bookName: entry.bookName, bookDesc: entry.bookDesc,
+      });
+      lastMove = { boardIdx: entry.boardIdx, cellIdx: entry.cellIdx };
     }
     winnerOverlay.classList.add('hidden');
     afterMoveChanged();
@@ -492,6 +660,7 @@
 
   analyzeBtn.addEventListener('click', () => {
     if (state.winner !== 0) return;
+    forceShowAnalysis = true;
     abortAnalysis();
     startAnalysis();
   });
@@ -503,8 +672,9 @@
     const b = (m / 9) | 0;
     const c = m - b * 9;
     if (isLegalUserMove(b, c)) {
+      const preMoveAnalysis = currentAnalysis;
       abortAnalysis();
-      applyMove(b, c);
+      applyMove(b, c, preMoveAnalysis);
       afterMoveChanged();
     }
   });
@@ -522,22 +692,16 @@
       render();
       return;
     }
-    if (shouldAutoAnalyze()) {
-      // If it's now the engine's turn, make sure it's thinking (or commit a finished one).
-      if (currentAnalysis && currentAnalysis.done && currentAnalysis.bestMove != null) {
-        render();
-        onAnalysisComplete(currentAnalysis);
-      } else if (!currentAnalysis) {
-        render();
-        startAnalysis();
-      } else {
-        render();
-      }
-    } else {
-      // Now it's the human's turn in play mode — clear any analysis and idle.
-      abortAnalysis();
-      currentAnalysis = null;
+    if (currentAnalysis && currentAnalysis.done && currentAnalysis.bestMove != null && isBotTurn()) {
       render();
+      onAnalysisComplete(currentAnalysis);
+    } else if (!currentAnalysis) {
+      render();
+      startAnalysis();
+    } else {
+      render();
+    }
+    if (!shouldShowAnalysisUI()) {
       setEngineStatus('Your move', '');
     }
   }
@@ -640,11 +804,11 @@
 
     abortAnalysis();
     currentAnalysis = null;
+    forceShowAnalysis = false;
     render();
     if (state.winner !== 0) return;
-    if (shouldAutoAnalyze()) {
-      startAnalysis();
-    } else {
+    startAnalysis();
+    if (!shouldShowAnalysisUI()) {
       setEngineStatus('Your move', '');
     }
   }

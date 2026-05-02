@@ -365,7 +365,7 @@ class MCTSSearcher {
     const rootMoves = rootState.legalMoves();
     if (rootMoves.length === 0) {
       this.shortcut = {
-        bestMove: null, topMoves: [], evaluation: 0,
+        bestMove: null, topMoves: [], evaluation: 0, legalMoveCount: 0,
       };
       this.root = null;
       return;
@@ -376,6 +376,7 @@ class MCTSSearcher {
         topMoves: [{ move: rootMoves[0], visits: 1, winRate: 0.5 }],
         evaluation: 0,
         forced: true,
+        legalMoveCount: 1,
       };
       this.root = null;
       return;
@@ -478,13 +479,14 @@ class MCTSSearcher {
         done: true,
         openingBook: !!this.shortcut.openingBook,
         forced: !!this.shortcut.forced,
+        legalMoveCount: this.shortcut.legalMoveCount || 0,
       };
     }
     if (!this.root) {
       return {
         bestMove: null, topMoves: [], simulations: 0,
         elapsedMs: elapsed, evaluation: 0, forPlayer: this.rootState.toMove,
-        done: !!done,
+        done: !!done, legalMoveCount: 0,
       };
     }
     return buildResult(this.root, this.sims, elapsed, this.rootState.toMove, !!done);
@@ -543,6 +545,7 @@ function buildResult(root, sims, elapsedMs, forPlayer, done) {
     evaluation,
     forPlayer,
     done,
+    legalMoveCount: candidates.length,
   };
 }
 
