@@ -232,19 +232,38 @@ const PUZZLES_DATA_DIR = process.env.PUZZLES_DATA_DIR
   ? path.resolve(process.env.PUZZLES_DATA_DIR)
   : path.join(__dirname, 'data');
 const PUZZLES_FILE = path.join(PUZZLES_DATA_DIR, 'puzzles.json');
+/** Shipped with the repo; used when PUZZLES_FILE is missing or empty (e.g. new persistent disk). */
+const BUNDLED_PUZZLES_FILE = path.join(__dirname, 'data', 'puzzles.json');
 
 const puzzlePool = [];
 const userSeen = new Map();
 let puzzleGenRunning = false;
 
+function tryLoadPuzzlesFromFile(filePath, label) {
+  if (!fs.existsSync(filePath)) return false;
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const data = JSON.parse(raw);
+  if (!Array.isArray(data) || data.length === 0) return false;
+  puzzlePool.push(...data);
+  console.log(`[puzzles] Loaded ${data.length} puzzles from ${label || filePath}`);
+  return true;
+}
+
 function loadPuzzlesFromDisk() {
   try {
-    if (fs.existsSync(PUZZLES_FILE)) {
-      const data = JSON.parse(fs.readFileSync(PUZZLES_FILE, 'utf-8'));
-      if (Array.isArray(data)) {
-        puzzlePool.push(...data);
-        console.log(`[puzzles] Loaded ${data.length} puzzles from disk`);
-      }
+    if (tryLoadPuzzlesFromFile(PUZZLES_FILE, PUZZLES_FILE)) return;
+
+    if (
+      path.resolve(BUNDLED_PUZZLES_FILE) !== path.resolve(PUZZLES_FILE) &&
+      tryLoadPuzzlesFromFile(BUNDLED_PUZZLES_FILE, `${BUNDLED_PUZZLES_FILE} (bundled seed)`)
+    ) {
+      savePuzzlesToDisk();
+      console.log(`[puzzles] Seeded ${PUZZLES_FILE} from bundled data`);
+      return;
+    }
+
+    if (!fs.existsSync(PUZZLES_FILE) && !fs.existsSync(BUNDLED_PUZZLES_FILE)) {
+      console.warn('[puzzles] No puzzles.json found; generation will run from scratch');
     }
   } catch (err) {
     console.error('[puzzles] Failed to load puzzles from disk:', err.message);
@@ -315,8 +334,9 @@ function triggerGeneration() {
     }
   });
 
-  worker.on('exit', () => {
+  worker.on('exit', (code) => {
     puzzleGenRunning = false;
+    if (code !== 0) console.error('[puzzles] Worker exited with code', code);
     if (needsMorePuzzles()) triggerGeneration();
   });
 
