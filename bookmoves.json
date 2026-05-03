@@ -1,8 +1,14 @@
 {
   "lines": [
     {
-      "name": "Classical Center",
-      "description": "The strongest opening — X seizes the center, O contests from a corner, X develops the target board.",
+      "name": "Ising Game",
+      "description": "Open with the top-middle of the center mini-board (C:T). You play on the meta center without taking C:C, and your opponent’s next move is locked to the top meta—useful when you want an early vertical lane instead of the deepest center duel.",
+      "variants": [["C:T"]],
+      "showVariantsHelp": true
+    },
+    {
+      "name": "Standard meta center",
+      "description": "After C:C on the meta center, O grabs a corner on that board and X takes the center of the mini-board they get sent to. You contest the inherited grid symmetrically and avoid handing over easy center-and-corner pairs on the same local board.",
       "variants": [
         ["C:C", "C:TL", "TL:C"],
         ["C:C", "C:TR", "TR:C"],
@@ -11,18 +17,28 @@
       ]
     },
     {
-      "name": "Italian Game",
-      "description": "X opens center, O responds through an edge cell, creating open lines across the meta-board.",
+      "name": "Meta center rim reply",
+      "description": "Same C:C on the meta center plus a corner reply there, but X plays an outer-edge cell on the board they inherit—fighting along the rim builds edge threats and keeps the local center open longer than taking TL:C immediately.",
       "variants": [
-        ["C:C", "C:T", "T:C"],
-        ["C:C", "C:R", "R:C"],
-        ["C:C", "C:B", "B:C"],
-        ["C:C", "C:L", "L:C"]
+        ["C:C", "C:TL", "TL:T"],
+        ["C:C", "C:TR", "TR:R"],
+        ["C:C", "C:BR", "BR:B"],
+        ["C:C", "C:BL", "BL:L"]
       ]
     },
     {
-      "name": "King's Indian",
-      "description": "X develops a corner board first, O claims the center, then X re-enters the center board to contest.",
+      "name": "Same-side rails",
+      "description": "O hits a middle-side on C (not a corner), X continues along that same facing rail on the meta they’re sent to (e.g. T:T). You stack influence along one axis across boards so sends stay correlated instead of scattering.",
+      "variants": [
+        ["C:C", "C:T", "T:T"],
+        ["C:C", "C:R", "R:R"],
+        ["C:C", "C:B", "B:B"],
+        ["C:C", "C:L", "L:L"]
+      ]
+    },
+    {
+      "name": "Outside meta center entry",
+      "description": "Anchor a corner meta with TL:C (etc.), pull O into C:C, then step into the meta center from your corner sector. You force an early fight on the meta center while keeping an outside meta already developed.",
       "variants": [
         ["TL:C", "C:C", "C:TL"],
         ["TR:C", "C:C", "C:TR"],
@@ -31,8 +47,8 @@
       ]
     },
     {
-      "name": "Fortress Defense",
-      "description": "After the center opening, X mirrors O's corner in the target board, trapping the opponent in one zone.",
+      "name": "Stacked corners",
+      "description": "After C:C and C:TL, X answers TL:TL—same corner type relative to each mini-board. Both sides keep doubling down in one wedge so the whole early game stays channelled through a single meta corridor.",
       "variants": [
         ["C:C", "C:TL", "TL:TL"],
         ["C:C", "C:TR", "TR:TR"],
@@ -41,8 +57,8 @@
       ]
     },
     {
-      "name": "Scandinavian",
-      "description": "A bold corner-to-corner start — X stakes a deep claim in one board, then transitions through the center.",
+      "name": "Inward corner meta center",
+      "description": "X opens with the deepest corner on a corner meta-board, meets the center of that board on move two, then touches the global center. Strength is situational; the pattern is easy to teach.",
       "variants": [
         ["TL:TL", "TL:C", "C:C"],
         ["TR:TR", "TR:C", "C:C"],
@@ -51,13 +67,33 @@
       ]
     },
     {
-      "name": "Hypermodern",
-      "description": "X develops from a corner, O seizes the center, then X strikes the opposite corner to create cross-board tension.",
+      "name": "Far-corner on meta center",
+      "description": "TL:C then C:C, then X hits the far-type corner on C (e.g. C:BR). Instead of mirroring the standard meta center line, you stretch threats across the center mini so O can’t solve one diagonal template.",
       "variants": [
         ["TL:C", "C:C", "C:BR"],
         ["TR:C", "C:C", "C:BL"],
         ["BL:C", "C:C", "C:TR"],
         ["BR:C", "C:C", "C:TL"]
+      ]
+    },
+    {
+      "name": "Corner meta center flank",
+      "description": "TL:TL → TL:C then exit through a side cell on C (e.g. C:L). You touch three metas quickly with mixed-depth moves—corner stack, then center local, then a lateral send—so the position stays tactically mixed.",
+      "variants": [
+        ["TL:TL", "TL:C", "C:L"],
+        ["TR:TR", "TR:C", "C:R"],
+        ["BL:BL", "BL:C", "C:L"],
+        ["BR:BR", "BR:C", "C:R"]
+      ]
+    },
+    {
+      "name": "Cross rim reply",
+      "description": "Same first two moves as Meta center rim reply (C:C, corner on C), but the third move is a perpendicular edge (e.g. TL:R not TL:T). You still fight the inherited mini from the outside band but turn threats across the board instead of lining them along one rim.",
+      "variants": [
+        ["C:C", "C:TL", "TL:R"],
+        ["C:C", "C:TR", "TR:L"],
+        ["C:C", "C:BR", "BR:L"],
+        ["C:C", "C:BL", "BL:R"]
       ]
     }
   ]

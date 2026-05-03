@@ -59,17 +59,26 @@ class OnlineManager {
     switch (msg.type) {
       case 'created':
         this.roomId = msg.room;
-        this.side = msg.side;
-        if (this.onRoomCreated) this.onRoomCreated(msg.room, msg.side);
+        this.side = msg.side === 'x' || msg.side === 'o' ? msg.side : null;
+        // Preserve undefined when absent so the host client keeps lobby time control (older servers).
+        this.timeControl = msg.timeControl != null ? msg.timeControl : null;
+        if (this.onRoomCreated) {
+          const sd = msg.side === 'x' || msg.side === 'o' ? msg.side : null;
+          this.onRoomCreated(msg.room, sd, msg.timeControl);
+        }
         break;
       case 'joined':
         this.roomId = msg.room;
         this.side = msg.side;
-        if (this.onJoined) this.onJoined(msg.room, msg.side);
+        this.timeControl = msg.timeControl != null ? msg.timeControl : null;
+        if (this.onJoined) this.onJoined(msg.room, msg.side, msg.timeControl);
         break;
-      case 'opponent_joined':
-        if (this.onOpponentJoined) this.onOpponentJoined();
+      case 'opponent_joined': {
+        const sd = msg.side === 'x' || msg.side === 'o' ? msg.side : null;
+        if (sd) this.side = sd;
+        if (this.onOpponentJoined) this.onOpponentJoined(sd);
         break;
+      }
       case 'opponent_move':
         if (this.onOpponentMove) this.onOpponentMove(msg.move);
         break;
@@ -89,9 +98,12 @@ class OnlineManager {
     }
   }
 
-  createRoom() {
+  createRoom(timeControl, hostSide) {
     if (!this.ws || this.ws.readyState !== 1) return;
-    this.ws.send(JSON.stringify({ type: 'create' }));
+    const tc = timeControl != null ? String(timeControl) : 'unlimited';
+    const hsRaw = hostSide != null ? String(hostSide).toLowerCase() : 'x';
+    const hs = hsRaw === 'o' ? 'o' : hsRaw === 'random' ? 'random' : 'x';
+    this.ws.send(JSON.stringify({ type: 'create', timeControl: tc, hostSide: hs }));
   }
 
   joinRoom(roomId) {

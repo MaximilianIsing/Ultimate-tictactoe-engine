@@ -3,30 +3,22 @@
 (() => {
   const UNLIMITED_BUDGET_MS = Number.MAX_SAFE_INTEGER;
 
-  const STORAGE_ENGINE_KEY = 'uttt-engine-version';
+  const REVIEW_CLASSIFY_BUDGET_SEC_KEY = 'uttt-review-classify-budget-sec';
 
-  function getEngineVersion() {
+  function getReviewClassifyBudgetMs() {
     try {
-      const v = localStorage.getItem(STORAGE_ENGINE_KEY);
-      if (v === 'v1') return 'v1';
-      if (v === 'v2') return 'v2';
-      if (v === 'v3') return 'v3';
-      return 'v3';
-    } catch {
-      return 'v3';
-    }
+      const v = parseFloat(localStorage.getItem(REVIEW_CLASSIFY_BUDGET_SEC_KEY));
+      if (Number.isFinite(v) && v >= 0.5 && v <= 5) {
+        return Math.round(v * 1000);
+      }
+    } catch { /* ignore */ }
+    return 2000;
   }
 
   function stateCtor(version) {
     if (version === 'v1') return self.UTTTEngine.UTTTState;
     if (version === 'v3') return self.UTTTEngineV3.UTTTState;
     return self.UTTTEngineV2.UTTTState;
-  }
-
-  function engineVersionLabel(v) {
-    if (v === 'v1') return 'Classic';
-    if (v === 'v3') return 'Strong';
-    return 'Balanced';
   }
 
   function mergeParallelMCTSResults(results) {
@@ -77,6 +69,65 @@
     const merged = mergeParallelMCTSResults(valid);
     if (!merged) return null;
     return { ...merged, done: false };
+  }
+
+  /** JSON-serialize engine analysis for review persistence (localStorage). */
+  function serializeReviewAnalysisForStorage(analysis) {
+    if (!analysis || !Array.isArray(analysis.topMoves) || analysis.topMoves.length === 0) return null;
+    return {
+      evaluation: analysis.evaluation != null ? Number(analysis.evaluation) : 0,
+      forPlayer: analysis.forPlayer === 2 ? 2 : 1,
+      bestMove: analysis.bestMove != null ? analysis.bestMove : null,
+      topMoves: analysis.topMoves.slice(0, 10).map(tm => ({
+        move: tm.move,
+        visits: tm.visits != null ? tm.visits | 0 : 0,
+        winRate: tm.winRate != null ? Number(tm.winRate) : 0,
+      })),
+      simulations: analysis.simulations != null ? analysis.simulations | 0 : 0,
+      elapsedMs: analysis.elapsedMs != null ? analysis.elapsedMs | 0 : 0,
+      legalMoveCount: analysis.legalMoveCount != null ? analysis.legalMoveCount | 0 : analysis.topMoves.length,
+      parallelWorkers: analysis.parallelWorkers != null ? analysis.parallelWorkers | 0 : undefined,
+    };
+  }
+
+  function parseReviewAnalysisFromStorage(snap) {
+    if (!snap || typeof snap !== 'object' || !Array.isArray(snap.topMoves) || snap.topMoves.length === 0) {
+      return null;
+    }
+    return {
+      evaluation: snap.evaluation != null ? Number(snap.evaluation) : 0,
+      forPlayer: snap.forPlayer === 2 ? 2 : 1,
+      bestMove: snap.bestMove != null ? snap.bestMove : null,
+      topMoves: snap.topMoves.map(tm => ({
+        move: tm.move,
+        visits: tm.visits != null ? tm.visits | 0 : 0,
+        winRate: tm.winRate != null ? Number(tm.winRate) : 0,
+      })),
+      simulations: snap.simulations != null ? snap.simulations | 0 : 0,
+      elapsedMs: snap.elapsedMs != null ? snap.elapsedMs | 0 : 0,
+      legalMoveCount: snap.legalMoveCount != null ? snap.legalMoveCount | 0 : snap.topMoves.length,
+      parallelWorkers: snap.parallelWorkers != null ? snap.parallelWorkers | 0 : undefined,
+      done: true,
+    };
+  }
+
+  const TIME_CONTROL_PRESETS = {
+    bullet: { id: 'bullet', msPerSide: 120000, label: 'Bullet', desc: '2 min each' },
+    blitz: { id: 'blitz', msPerSide: 300000, label: 'Blitz', desc: '5 min each' },
+    rapid: { id: 'rapid', msPerSide: 600000, label: 'Rapid', desc: '10 min each' },
+    unlimited: { id: 'unlimited', msPerSide: 0, label: 'Unlimited', desc: 'No clock' },
+  };
+
+  function normalizeTimeControlId(raw) {
+    const k = String(raw || '').toLowerCase();
+    return TIME_CONTROL_PRESETS[k] ? k : 'unlimited';
+  }
+
+  function formatClockMs(ms) {
+    const sec = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
   const LABEL_TO_IDX = { TL: 0, T: 1, TR: 2, L: 3, C: 4, R: 5, BL: 6, B: 7, BR: 8 };
@@ -190,6 +241,7 @@
 
   function formatStats(result) {
     if (!result) return '\u2014';
+    if (result.restored && (!result.topMoves || result.topMoves.length === 0)) return 'Saved review';
     const sims = result.simulations || 0;
     const ms = result.elapsedMs || 0;
     const sps = ms > 0 ? Math.round(sims / (ms / 1000)) : 0;
@@ -211,16 +263,20 @@
       this.onlineManager = options.onlineManager || null;
       this.onGameOver = options.onGameOver || null;
       this.onMoveApplied = options.onMoveApplied || null;
+      this.onReviewClassifyComplete = options.onReviewClassifyComplete || null;
+      this.reviewStorageRecordId = options.reviewStorageRecordId != null ? options.reviewStorageRecordId : null;
+      this.reviewSkipAutoClassify = options.reviewSkipAutoClassify === true;
       this.reviewMoveHistory = options.reviewHistory || null;
+      this.reviewInitialIndex = options.reviewInitialIndex != null ? options.reviewInitialIndex | 0 : 0;
+      this.onReviewPersist = typeof options.onReviewPersist === 'function' ? options.onReviewPersist : null;
       this.initialAnalysisHistory = options.initialAnalysisHistory || null;
-      this.engineVersion = options.engineVersion || getEngineVersion();
-      this.engineVersionX = options.engineVersionX || 'v3';
-      this.engineVersionO = options.engineVersionO || 'v3';
+      this.initialAnalysisState = options.initialAnalysisState || null;
+      this.engineVersion = 'v3';
 
-      const stateEng = this.mode === 'aivai' ? 'v1' : this.engineVersion;
-      const Ctor = stateCtor(stateEng);
+      const Ctor = stateCtor(this.engineVersion);
       this.state = new Ctor();
       this.history = [];
+      this.analysisFreePlayBaseline = null;
       this.lastMove = null;
       this.cellEls = [];
       this.smallEls = [];
@@ -229,12 +285,17 @@
       this.hoveredMove = null;
       this.forceShowAnalysis = false;
       this.thinkingBudgetMs = 5000;
-      this.aivaiBudgetMsX = 5000;
-      this.aivaiBudgetMsO = 5000;
-      this.aivaiRunning = false;
       this.destroyed = false;
       this.reviewIndex = 0;
       this.onlineReady = this.mode !== 'online';
+      this.timeControlId = normalizeTimeControlId(options.timeControl);
+      const tcp = TIME_CONTROL_PRESETS[this.timeControlId] || TIME_CONTROL_PRESETS.unlimited;
+      this._clockMsPerSide = tcp.msPerSide;
+      this._clockBankX = 0;
+      this._clockBankO = 0;
+      this._clockActiveSide = 1;
+      this._clockAnchorTime = 0;
+      this._clockRafId = null;
       this.workersV2 = [];
       this.workersV3 = [];
 
@@ -247,10 +308,32 @@
         this._setupOnline();
       }
 
+      if (this.mode === 'local' || this.mode === 'online') {
+        this._onVisibilityChange = () => {
+          if (this.destroyed || document.visibilityState !== 'visible') return;
+          if (!this._clockEnabled() || this.state.winner !== 0) return;
+          if (!this._shouldRunClock()) {
+            this._updateClockDisplay();
+            return;
+          }
+          const cur = this._remainingMsActivePlayer();
+          if (cur <= 0) {
+            this._commitActiveClockBank();
+            this._updateClockDisplay();
+            this._onTimeForfeit(this._clockActiveSide);
+          } else {
+            this._updateClockDisplay();
+          }
+        };
+        document.addEventListener('visibilitychange', this._onVisibilityChange);
+      }
+
       if (this.mode === 'review' && this.reviewMoveHistory) {
         this._initReview();
       } else if (this.mode === 'analysis' && this.initialAnalysisHistory && this.initialAnalysisHistory.length > 0) {
         this._bootstrapAnalysisFromHistory(this.initialAnalysisHistory);
+      } else if (this.mode === 'analysis' && this.initialAnalysisState) {
+        this._loadAnalysisState(this.initialAnalysisState);
       } else {
         this.reset();
       }
@@ -269,14 +352,32 @@
 
       boardCol.innerHTML = `
         <div class="game-status">
-          <div class="turn-indicator">
-            <span class="turn-label">Turn:</span>
-            <span class="turn-mark" data-mark="X">X</span>
+          <div class="clock-row hidden" aria-live="polite">
+            <div class="clock-preset-label">
+              <span class="clock-preset-icon time-icon time-icon--unlimited time-icon--clock" aria-hidden="true"></span>
+              <span class="clock-preset-details"></span>
+            </div>
+            <div class="clock-pair">
+              <div class="game-clock" data-clock-player="1">
+                <span class="game-clock-mark">X</span>
+                <span class="game-clock-time">\u2014</span>
+              </div>
+              <div class="game-clock" data-clock-player="2">
+                <span class="game-clock-mark">O</span>
+                <span class="game-clock-time">\u2014</span>
+              </div>
+            </div>
           </div>
-          <div class="book-label hidden"></div>
-          <div class="status-buttons">
-            <button class="btn-secondary btn-undo" title="Undo last move">Undo</button>
-            <button class="btn-secondary btn-reset">New Game</button>
+          <div class="game-status-main">
+            <div class="turn-indicator">
+              <span class="turn-label">Turn:</span>
+              <span class="turn-mark" data-mark="X">X</span>
+            </div>
+            <div class="book-label hidden"></div>
+            <div class="status-buttons">
+              <button class="btn-secondary btn-undo" title="Undo last move">Undo</button>
+              <button class="btn-secondary btn-reset">New Game</button>
+            </div>
           </div>
         </div>
         <div class="board-wrapper">
@@ -301,6 +402,9 @@
 
       this.els = {
         metaBoard: boardCol.querySelector('.meta-board'),
+        clockRow: boardCol.querySelector('.clock-row'),
+        clockPresetIcon: boardCol.querySelector('.clock-preset-icon'),
+        clockPresetDetails: boardCol.querySelector('.clock-preset-details'),
         turnMark: boardCol.querySelector('.turn-mark'),
         bookLabel: boardCol.querySelector('.book-label'),
         undoBtn: boardCol.querySelector('.btn-undo'),
@@ -315,55 +419,8 @@
       this._buildBoard();
     }
 
-    _aivaiBudgetSegHtml(currentMs) {
-      const rows = [
-        { v: 2000, label: '2s' },
-        { v: 5000, label: '5s' },
-        { v: 30000, label: '30s' },
-        { v: -1, label: '\u221E', title: 'Unlimited' },
-      ];
-      return rows.map(r => {
-        const ms = r.v === -1 ? UNLIMITED_BUDGET_MS : r.v;
-        const active = currentMs === ms;
-        const title = r.title ? ` title="${r.title}"` : '';
-        return `<button class="seg-btn${active ? ' is-active' : ''}" type="button" data-budget="${r.v}" role="radio"${title}>${r.label}</button>`;
-      }).join('');
-    }
-
     _buildPanel(panel) {
       panel.innerHTML = '';
-
-      if (this.mode === 'aivai') {
-        panel.innerHTML += `
-          <div class="panel-section">
-            <div class="panel-section-title">X (first) \u2014 model</div>
-            <div class="segmented cols-3 aivai-engine-x" role="radiogroup" aria-label="Engine for X">
-              <button class="seg-btn${this.engineVersionX === 'v1' ? ' is-active' : ''}" type="button" data-aivai-side="x" data-engine="v1" role="radio">Classic</button>
-              <button class="seg-btn${this.engineVersionX === 'v2' ? ' is-active' : ''}" type="button" data-aivai-side="x" data-engine="v2" role="radio">Balanced</button>
-              <button class="seg-btn${this.engineVersionX === 'v3' ? ' is-active' : ''}" type="button" data-aivai-side="x" data-engine="v3" role="radio">Strong</button>
-            </div>
-            <div class="panel-section-title is-follow">X \u2014 thinking time</div>
-            <div class="segmented cols-4 aivai-budget-picker-x" role="radiogroup" aria-label="Thinking time for X">
-              ${this._aivaiBudgetSegHtml(this.aivaiBudgetMsX)}
-            </div>
-          </div>
-          <div class="panel-section">
-            <div class="panel-section-title">O (second) \u2014 model</div>
-            <div class="segmented cols-3 aivai-engine-o" role="radiogroup" aria-label="Engine for O">
-              <button class="seg-btn${this.engineVersionO === 'v1' ? ' is-active' : ''}" type="button" data-aivai-side="o" data-engine="v1" role="radio">Classic</button>
-              <button class="seg-btn${this.engineVersionO === 'v2' ? ' is-active' : ''}" type="button" data-aivai-side="o" data-engine="v2" role="radio">Balanced</button>
-              <button class="seg-btn${this.engineVersionO === 'v3' ? ' is-active' : ''}" type="button" data-aivai-side="o" data-engine="v3" role="radio">Strong</button>
-            </div>
-            <div class="panel-section-title is-follow">O \u2014 thinking time</div>
-            <div class="segmented cols-4 aivai-budget-picker-o" role="radiogroup" aria-label="Thinking time for O">
-              ${this._aivaiBudgetSegHtml(this.aivaiBudgetMsO)}
-            </div>
-          </div>
-          <div class="panel-section">
-            <button class="btn-primary btn-aivai-start" type="button">Start</button>
-            <p class="settings-hint aivai-start-hint">Engines run only after you press Start.</p>
-          </div>`;
-      }
 
       if (this.mode === 'ai') {
         panel.innerHTML += `
@@ -441,39 +498,6 @@
           </div>`;
       }
 
-      if (this.mode === 'aivai') {
-        panel.innerHTML += `
-          <div class="panel-section eval-section">
-            <div class="eval-header">
-              <span class="eval-label">Evaluation</span>
-              <span class="eval-value">\u2014</span>
-            </div>
-            <div class="eval-bar">
-              <div class="eval-fill"></div>
-              <div class="eval-center"></div>
-            </div>
-            <div class="eval-legend">
-              <span data-mark="X">X advantage</span>
-              <span data-mark="O">O advantage</span>
-            </div>
-          </div>
-          <div class="panel-section engine-status-section">
-            <div class="status-line">Ready</div>
-            <div class="status-stats">\u2014</div>
-          </div>
-          <div class="panel-section top-moves-section">
-            <div class="section-header">
-              <h3>Top moves</h3>
-              <span class="section-hint">side to move</span>
-            </div>
-            <ol class="moves-list"></ol>
-          </div>
-          <div class="panel-section panel-buttons">
-            <button class="btn-secondary btn-analyze">Re-analyze</button>
-            <button class="btn-primary btn-engine-move">Step best move</button>
-          </div>`;
-      }
-
       if (this.mode === 'analysis' || this.mode === 'review') {
         panel.innerHTML += `
           <div class="panel-section eval-section">
@@ -531,7 +555,23 @@
       }
 
       if (this.mode === 'local') {
+        const tcCards = ['bullet', 'blitz', 'rapid', 'unlimited'].map(id => {
+          const p = TIME_CONTROL_PRESETS[id];
+          const active = id === this.timeControlId ? ' is-active' : '';
+          return `
+            <button type="button" class="time-control-card${active}" data-time="${id}">
+              <span class="time-icon time-icon--${id} time-icon--panel" aria-hidden="true"></span>
+              <span class="time-control-card-name">${p.label}</span>
+              <span class="time-control-card-desc">${p.desc}</span>
+            </button>`;
+        }).join('');
         panel.innerHTML += `
+          <div class="panel-section">
+            <div class="panel-section-title">Time control</div>
+            <div class="time-control-cards">
+              ${tcCards}
+            </div>
+          </div>
           <div class="panel-section">
             <div class="panel-section-title">Local Game</div>
             <p style="color: var(--muted); font-size: 0.88rem; line-height: 1.5;">
@@ -592,7 +632,7 @@
 
       const attachV2Pool = () => {
         for (let i = 0; i < nParallel; i++) {
-          const w = new Worker('workerv2.js');
+          const w = new Worker('engines/workerv2.js');
           w.addEventListener('message', (e) => this._onWorkerMessageParallel(e));
           this.workersV2.push(w);
         }
@@ -600,35 +640,26 @@
 
       const attachV3Pool = () => {
         for (let i = 0; i < nParallel; i++) {
-          const w = new Worker('workerv3.js');
+          const w = new Worker('engines/workerv3.js');
           w.addEventListener('message', (e) => this._onWorkerMessageParallel(e));
           this.workersV3.push(w);
         }
       };
 
-      if (this.mode === 'aivai') {
-        if (this.engineVersionX === 'v2' || this.engineVersionO === 'v2') attachV2Pool();
-        if (this.engineVersionX === 'v3' || this.engineVersionO === 'v3') attachV3Pool();
-        if (this.engineVersionX === 'v1' || this.engineVersionO === 'v1') {
-          this.worker = new Worker('worker.js');
-          this.worker.addEventListener('message', (e) => this._onWorkerMessage(e));
-        }
-      } else if (this.mode === 'review') {
+      if (this.mode === 'review') {
         attachV3Pool();
       } else if (this.engineVersion === 'v3') {
         attachV3Pool();
       } else if (this.engineVersion === 'v2') {
         attachV2Pool();
       } else {
-        this.worker = new Worker('worker.js');
+        this.worker = new Worker('engines/worker.js');
         this.worker.addEventListener('message', (e) => this._onWorkerMessage(e));
       }
     }
 
     _parallelEngineForTurn() {
-      const side = this.mode === 'aivai'
-        ? (this.state.toMove === 1 ? this.engineVersionX : this.engineVersionO)
-        : this.engineVersion;
+      const side = this.engineVersion;
       return side === 'v2' || side === 'v3' ? side : null;
     }
 
@@ -748,9 +779,6 @@
 
     _getCurrentBudget() {
       if (this.mode === 'ai') return AI_BUDGETS[this.difficulty] || 5000;
-      if (this.mode === 'aivai') {
-        return this.state.toMove === 1 ? this.aivaiBudgetMsX : this.aivaiBudgetMsO;
-      }
       if (this.mode === 'analysis' || this.mode === 'review') {
         return this.thinkingBudgetMs;
       }
@@ -771,10 +799,6 @@
       if (this.mode === 'review') {
         this.els.undoBtn.style.display = 'none';
         this.els.resetBtn.style.display = 'none';
-      }
-
-      if (this.mode === 'aivai') {
-        this.els.undoBtn.style.display = 'none';
       }
 
       if (this.mode === 'ai') {
@@ -805,6 +829,20 @@
         });
       }
 
+      if (this.mode === 'local') {
+        const tcCards = this.els.panel.querySelectorAll('.time-control-card');
+        tcCards.forEach(card => {
+          card.addEventListener('click', () => {
+            const tc = card.dataset.time;
+            if (!tc || tc === this.timeControlId) return;
+            this.timeControlId = normalizeTimeControlId(tc);
+            this._clockMsPerSide = (TIME_CONTROL_PRESETS[this.timeControlId] || TIME_CONTROL_PRESETS.unlimited).msPerSide;
+            tcCards.forEach(c => c.classList.toggle('is-active', c.dataset.time === this.timeControlId));
+            this.reset();
+          });
+        });
+      }
+
       if (this.mode === 'analysis') {
         const budgetBtns = this.els.panel.querySelectorAll('.budget-picker .seg-btn');
         budgetBtns.forEach(btn => {
@@ -823,76 +861,6 @@
             this._startAnalysis();
           });
         });
-      }
-
-      if (this.mode === 'aivai') {
-        const startBtn = this.els.panel.querySelector('.btn-aivai-start');
-        if (startBtn) {
-          startBtn.addEventListener('click', () => {
-            if (this.state.winner !== 0 || this.aivaiRunning) return;
-            this.aivaiRunning = true;
-            this._updateButtonStates();
-            this.forceShowAnalysis = true;
-            this._abortAnalysis();
-            this._startAnalysis();
-          });
-        }
-
-        const wireSide = side => {
-          const prefix = side === 'x' ? 'x' : 'o';
-          const wrap = this.els.panel.querySelector(`.aivai-engine-${prefix}`);
-          if (!wrap) return;
-          wrap.querySelectorAll('.seg-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const eng = btn.dataset.engine;
-              const cur = side === 'x' ? this.engineVersionX : this.engineVersionO;
-              if (eng === cur) return;
-              if (side === 'x') this.engineVersionX = eng;
-              else this.engineVersionO = eng;
-              wrap.querySelectorAll('.seg-btn').forEach(b => {
-                b.classList.toggle('is-active', b.dataset.engine === eng);
-              });
-              this._abortAnalysis();
-              this._setupWorker();
-              if (this.state.winner === 0) {
-                this.currentAnalysis = null;
-                this.render();
-                if (this.aivaiRunning) {
-                  this._startAnalysis();
-                }
-              }
-            });
-          });
-        };
-        wireSide('x');
-        wireSide('o');
-
-        const wireAivaiBudget = (pickerClass, prop, toMoveWhenX) => {
-          const wrap = this.els.panel.querySelector(pickerClass);
-          if (!wrap) return;
-          const btns = wrap.querySelectorAll('.seg-btn');
-          btns.forEach(btn => {
-            btn.addEventListener('click', () => {
-              const v = parseInt(btn.dataset.budget, 10);
-              const next = v === -1 ? UNLIMITED_BUDGET_MS : v;
-              if (next === this[prop]) return;
-              this[prop] = next;
-              btns.forEach(b => {
-                const bv = parseInt(b.dataset.budget, 10);
-                const ms = bv === -1 ? UNLIMITED_BUDGET_MS : bv;
-                b.classList.toggle('is-active', ms === next);
-              });
-              if (this.state.winner !== 0) return;
-              this._abortAnalysis();
-              const sideToMove = toMoveWhenX ? 1 : 2;
-              if (this.aivaiRunning && this.state.toMove === sideToMove) {
-                this._startAnalysis();
-              }
-            });
-          });
-        };
-        wireAivaiBudget('.aivai-budget-picker-x', 'aivaiBudgetMsX', true);
-        wireAivaiBudget('.aivai-budget-picker-o', 'aivaiBudgetMsO', false);
       }
 
       const analyzeBtn = this.els.panel.querySelector('.btn-analyze');
@@ -972,6 +940,155 @@
       document.addEventListener('keydown', this._reviewKeyHandler);
     }
 
+    _remainingMsForSide(side) {
+      if (!this._clockMsPerSide) return 0;
+      let ms = side === 1 ? this._clockBankX : this._clockBankO;
+      if (this._shouldRunClock() && side === this._clockActiveSide) {
+        const elapsed = performance.now() - this._clockAnchorTime;
+        ms = Math.max(0, ms - elapsed);
+      }
+      return ms;
+    }
+
+    _remainingMsActivePlayer() {
+      return this._remainingMsForSide(this._clockActiveSide);
+    }
+
+    _commitActiveClockBank() {
+      if (!this._clockMsPerSide || !this._clockEnabled()) return;
+      const now = performance.now();
+      const elapsed = now - this._clockAnchorTime;
+      if (this._clockActiveSide === 1) this._clockBankX = Math.max(0, this._clockBankX - elapsed);
+      else if (this._clockActiveSide === 2) this._clockBankO = Math.max(0, this._clockBankO - elapsed);
+      this._clockAnchorTime = now;
+    }
+
+    // ── Clocks ──
+
+    _clockEnabled() {
+      return (this.mode === 'local' || this.mode === 'online') && this._clockMsPerSide > 0;
+    }
+
+    _shouldRunClock() {
+      return this._clockEnabled() && this.state.winner === 0 &&
+        (this.mode === 'local' || (this.mode === 'online' && this.onlineReady)) &&
+        (this.mode !== 'online' || this.history.length > 0);
+    }
+
+    _refreshClockRow() {
+      const row = this.els.clockRow;
+      if (!row) return;
+      const show = this._clockEnabled();
+      row.classList.toggle('hidden', !show);
+      if (!show) {
+        this._stopClockLoop();
+        return;
+      }
+      const preset = TIME_CONTROL_PRESETS[this.timeControlId] || TIME_CONTROL_PRESETS.unlimited;
+      if (this.els.clockPresetIcon) {
+        const id = normalizeTimeControlId(this.timeControlId);
+        this.els.clockPresetIcon.className =
+          `clock-preset-icon time-icon time-icon--${id} time-icon--clock`;
+      }
+      if (this.els.clockPresetDetails) {
+        this.els.clockPresetDetails.textContent = `${preset.label} \u00B7 ${preset.desc}`;
+      }
+      this._updateClockDisplay();
+    }
+
+    _updateClockActiveClass() {
+      if (!this.els.clockRow) return;
+      for (const el of this.els.clockRow.querySelectorAll('.game-clock')) {
+        const p = Number(el.dataset.clockPlayer);
+        el.classList.toggle(
+          'clock-active',
+          this._shouldRunClock() && p === this._clockActiveSide,
+        );
+      }
+    }
+
+    _updateClockDisplay() {
+      if (!this._clockEnabled()) return;
+      const xEl = this.els.clockRow.querySelector('.game-clock[data-clock-player="1"] .game-clock-time');
+      const oEl = this.els.clockRow.querySelector('.game-clock[data-clock-player="2"] .game-clock-time');
+      if (xEl) xEl.textContent = formatClockMs(this._remainingMsForSide(1));
+      if (oEl) oEl.textContent = formatClockMs(this._remainingMsForSide(2));
+      this._updateClockActiveClass();
+    }
+
+    _resetClockTimesFromPreset() {
+      if (!this._clockMsPerSide) return;
+      this._clockBankX = this._clockMsPerSide;
+      this._clockBankO = this._clockMsPerSide;
+      this._clockActiveSide = this.state.toMove;
+      this._clockAnchorTime = performance.now();
+      this._updateClockDisplay();
+    }
+
+    _syncClockActiveSide() {
+      if (!this._clockEnabled()) return;
+      const next = this.state.toMove;
+      if (next !== this._clockActiveSide) {
+        const skipBurn =
+          this.mode === 'online' &&
+          this.history.length === 1 &&
+          this.state.moveCount === 1;
+        if (!skipBurn) this._commitActiveClockBank();
+        this._clockActiveSide = next;
+        this._clockAnchorTime = performance.now();
+      }
+      this._updateClockActiveClass();
+    }
+
+    _stopClockLoop() {
+      if (this._clockRafId != null) {
+        cancelAnimationFrame(this._clockRafId);
+        this._clockRafId = null;
+      }
+    }
+
+    _startClockLoop() {
+      if (this.destroyed || !this._shouldRunClock()) return;
+      if (this._clockRafId != null) return;
+      const tick = () => {
+        this._clockRafId = null;
+        if (this.destroyed || !this._shouldRunClock()) return;
+        const cur = this._remainingMsActivePlayer();
+        if (cur <= 0) {
+          this._commitActiveClockBank();
+          this._updateClockDisplay();
+          this._onTimeForfeit(this._clockActiveSide);
+          return;
+        }
+        this._updateClockDisplay();
+        this._clockRafId = requestAnimationFrame(tick);
+      };
+      this._clockRafId = requestAnimationFrame(tick);
+    }
+
+    _onTimeForfeit(loserPlayer) {
+      this._stopClockLoop();
+      if (this.state.winner !== 0) return;
+      const winner = loserPlayer === 1 ? 2 : 1;
+      this.state.winner = winner;
+      this.render();
+      this._showWinner(winner);
+      this._setEngineStatus('Game over', '');
+      this._clearMovesList();
+      const finalEval = winner === 1 ? 1 : winner === 2 ? -1 : 0;
+      this._setEval(finalEval, 1);
+      if (this.onGameOver) this.onGameOver(this.state.winner, this.history);
+    }
+
+    applyOnlineTimeControl(id) {
+      this.timeControlId = normalizeTimeControlId(id);
+      this._clockMsPerSide = (TIME_CONTROL_PRESETS[this.timeControlId] || TIME_CONTROL_PRESETS.unlimited).msPerSide;
+      this._resetClockTimesFromPreset();
+      this._refreshClockRow();
+      this._stopClockLoop();
+      if (this._shouldRunClock()) this._startClockLoop();
+    }
+
     // ── Online ──
 
     _setupOnline() {
@@ -981,8 +1098,15 @@
       const codeDisplay = this.els.panel.querySelector('.room-code-display');
       const linkInput = this.els.panel.querySelector('.share-link-input');
 
-      om.onRoomCreated = (room, side) => {
-        this.humanSide = side;
+      om.onRoomCreated = (room, side, timeControl) => {
+        if (side === 'x' || side === 'o') {
+          this.humanSide = side;
+        }
+        if (timeControl != null && String(timeControl).trim() !== '') {
+          this.applyOnlineTimeControl(timeControl);
+        } else {
+          this._refreshClockRow();
+        }
         if (dot) { dot.className = 'connection-dot waiting'; }
         if (text) { text.textContent = 'Waiting for opponent...'; }
         if (codeDisplay) {
@@ -999,19 +1123,31 @@
         }
       };
 
-      om.onJoined = (room, side) => {
+      om.onJoined = (room, side, timeControl) => {
         this.humanSide = side;
         this.onlineReady = true;
         if (dot) { dot.className = 'connection-dot connected'; }
         if (text) { text.textContent = `Joined as ${side.toUpperCase()}`; }
+        this.applyOnlineTimeControl(
+          timeControl != null && String(timeControl).trim() !== '' ? timeControl : 'unlimited',
+        );
         this.render();
+        if (this._shouldRunClock()) this._startClockLoop();
       };
 
-      om.onOpponentJoined = () => {
+      om.onOpponentJoined = (sideFromServer) => {
+        if (sideFromServer === 'x' || sideFromServer === 'o') {
+          this.humanSide = sideFromServer;
+        }
         this.onlineReady = true;
+        if (this._clockMsPerSide > 0) this._clockAnchorTime = performance.now();
         if (dot) { dot.className = 'connection-dot connected'; }
-        if (text) { text.textContent = 'Opponent connected!'; }
+        if (text) {
+          const mark = this.humanSide === 'x' ? 'X' : 'O';
+          text.textContent = `Opponent connected! You are ${mark}.`;
+        }
         this.render();
+        if (this._shouldRunClock()) this._startClockLoop();
       };
 
       om.onOpponentMove = (move) => {
@@ -1024,6 +1160,7 @@
       };
 
       om.onOpponentDisconnected = () => {
+        this._stopClockLoop();
         if (dot) { dot.className = 'connection-dot disconnected'; }
         if (text) { text.textContent = 'Opponent disconnected'; }
       };
@@ -1043,7 +1180,6 @@
 
     _isHumanTurn() {
       if (this.state.winner !== 0) return false;
-      if (this.mode === 'aivai') return false;
       if (this.mode === 'analysis') return true;
       if (this.mode === 'review') return false;
       if (this.mode === 'local') return true;
@@ -1062,7 +1198,6 @@
 
     _isBotTurn() {
       if (this.state.winner !== 0) return false;
-      if (this.mode === 'aivai') return this.aivaiRunning;
       if (this.mode === 'ai') {
         return (this.humanSide === 'x' && this.state.toMove === 2) ||
                (this.humanSide === 'o' && this.state.toMove === 1);
@@ -1074,14 +1209,12 @@
       if (this.state.winner !== 0) return false;
       if (this.mode === 'analysis') return true;
       if (this.mode === 'review') return true;
-      if (this.mode === 'aivai') return this.aivaiRunning;
       if (this.mode === 'ai') return this._isBotTurn();
       return false;
     }
 
     _shouldShowAnalysisUI() {
       if (this.forceShowAnalysis) return true;
-      if (this.mode === 'aivai') return true;
       if (this.mode === 'analysis') return true;
       if (this.mode === 'review') return true;
       return false;
@@ -1128,6 +1261,7 @@
     }
 
     _afterMove() {
+      this._stopClockLoop();
       this.hoveredMove = null;
       this.currentAnalysis = null;
       this.forceShowAnalysis = false;
@@ -1136,6 +1270,7 @@
       if (this.onMoveApplied) this.onMoveApplied(this.history);
 
       if (this.state.winner !== 0) {
+        if (this._clockEnabled()) this._commitActiveClockBank();
         this._showWinner(this.state.winner);
         this._setEngineStatus('Game over', '');
         this._clearMovesList();
@@ -1144,6 +1279,9 @@
         if (this.onGameOver) this.onGameOver(this.state.winner, this.history);
         return;
       }
+
+      this._syncClockActiveSide();
+      if (this._shouldRunClock()) this._startClockLoop();
 
       if (this._shouldAutoAnalyze()) {
         this._startAnalysis();
@@ -1220,6 +1358,11 @@
       this._updateReviewUI();
       this._updateClassifyProgress();
       this._renderEvalGraph();
+      if (this.onReviewPersist && this.reviewMoveHistory && !this.reviewSkipAutoClassify) {
+        try {
+          this.onReviewPersist(this.reviewIndex, this.reviewMoveHistory, true);
+        } catch { /* ignore */ }
+      }
     }
 
     _renderEvalGraph() {
@@ -1413,6 +1556,10 @@
       this._renderClassifications();
       this._updateBookLabel();
       this._updateButtonStates();
+
+      if (this.els.clockRow && (this.mode === 'local' || this.mode === 'online')) {
+        this.els.clockRow.classList.toggle('hidden', !this._clockEnabled());
+      }
     }
 
     _clearHints() {
@@ -1453,9 +1600,6 @@
         if (showUI) {
           this._setEval(null);
           this._clearMovesList();
-          if (this.mode === 'aivai' && this.state.winner === 0 && !this.aivaiRunning) {
-            this._setEngineStatus('Press Start to begin', '');
-          }
         }
         this._applyAnalysisHints();
         this._updateButtonStates();
@@ -1471,16 +1615,10 @@
         if (final) {
           if (this.mode === 'analysis' || this.mode === 'review') {
             label = `${this.state.toMove === 1 ? 'X' : 'O'} to move`;
-          } else if (this.mode === 'aivai') {
-            const mark = this.state.toMove === 1 ? 'X' : 'O';
-            const ev = this.state.toMove === 1 ? this.engineVersionX : this.engineVersionO;
-            const eng = engineVersionLabel(ev);
-            label = `${mark} to move \u00B7 ${eng}`;
           } else {
             label = this._isHumanTurn() ? 'Your move' : 'Engine ready';
           }
         } else if (this.mode === 'review' && this._isAutoClassifyLive) {
-          const mark = this.state.toMove === 1 ? 'X' : 'O';
           label = `Analyzing move ${(this._autoClassifyIdx || 0) + 1}\u2026`;
         } else {
           label = 'Engine thinking\u2026';
@@ -1491,7 +1629,7 @@
     }
 
     _updateButtonStates() {
-      this.els.undoBtn.disabled = this.history.length === 0 || this.mode === 'review' || this.mode === 'aivai';
+      this.els.undoBtn.disabled = this.history.length === 0 || this.mode === 'review';
       this.els.resetBtn.disabled = this.mode === 'review';
 
       const analyzeBtn = this.els.panel.querySelector('.btn-analyze');
@@ -1501,10 +1639,6 @@
         engineMoveBtn.disabled = this.state.winner !== 0 || !this.currentAnalysis || this.currentAnalysis.bestMove == null;
       }
 
-      const aivaiStart = this.els.panel.querySelector('.btn-aivai-start');
-      if (aivaiStart) {
-        aivaiStart.disabled = this.state.winner !== 0 || this.aivaiRunning;
-      }
     }
 
     _setEngineStatus(label, stats) {
@@ -1694,7 +1828,7 @@
       playAgainBtn.addEventListener('click', () => this.reset());
       this.els.winnerButtons.appendChild(playAgainBtn);
 
-      if (this.mode === 'ai' || this.mode === 'local' || this.mode === 'online' || this.mode === 'aivai') {
+      if (this.mode === 'ai' || this.mode === 'local' || this.mode === 'online') {
         const reviewBtn = document.createElement('button');
         reviewBtn.className = 'btn-primary';
         reviewBtn.textContent = 'Review Game';
@@ -1713,6 +1847,7 @@
 
     _bootstrapAnalysisFromHistory(entries) {
       this._abortAnalysis();
+      this.analysisFreePlayBaseline = null;
       this.state.smallX.fill(0);
       this.state.smallO.fill(0);
       this.state.bigState.fill(0);
@@ -1752,8 +1887,24 @@
       this._afterMove();
     }
 
+    _loadAnalysisState(serialized) {
+      this._abortAnalysis();
+      const Ctor = stateCtor(this.engineVersion);
+      this.state = Ctor.deserialize(serialized);
+      this.analysisFreePlayBaseline = JSON.parse(JSON.stringify(serialized));
+      this.history.length = 0;
+      this.lastMove = null;
+      this.currentAnalysis = null;
+      this.hoveredMove = null;
+      this.forceShowAnalysis = false;
+      this.els.winnerOverlay.classList.add('hidden');
+      this.render();
+      this._afterMove();
+    }
+
     reset() {
       this._abortAnalysis();
+      this.analysisFreePlayBaseline = null;
       this.state.smallX.fill(0);
       this.state.smallO.fill(0);
       this.state.bigState.fill(0);
@@ -1770,27 +1921,34 @@
       this.hoveredMove = null;
       this.forceShowAnalysis = false;
       this.els.winnerOverlay.classList.add('hidden');
-      if (this.mode === 'aivai') {
-        this.aivaiRunning = false;
-      }
+      this._refreshClockRow();
+      this._resetClockTimesFromPreset();
       this._afterMove();
     }
 
     undo() {
       if (this.history.length === 0) return;
-      if (this.mode === 'online' || this.mode === 'review' || this.mode === 'aivai') return;
+      if (this.mode === 'online' || this.mode === 'review') return;
+      if (this.mode === 'local' && this._clockMsPerSide > 0) return;
       this._abortAnalysis();
       const oldEntries = this.history.slice(0, -1);
-      this.state.smallX.fill(0);
-      this.state.smallO.fill(0);
-      this.state.bigState.fill(0);
-      this.state.bigX = 0;
-      this.state.bigO = 0;
-      this.state.bigSettled = 0;
-      this.state.activeBoard = -1;
-      this.state.toMove = 1;
-      this.state.winner = 0;
-      this.state.moveCount = 0;
+      const Ctor = stateCtor(this.engineVersion);
+
+      if (this.mode === 'analysis' && this.analysisFreePlayBaseline != null) {
+        this.state = Ctor.deserialize(JSON.parse(JSON.stringify(this.analysisFreePlayBaseline)));
+      } else {
+        this.state.smallX.fill(0);
+        this.state.smallO.fill(0);
+        this.state.bigState.fill(0);
+        this.state.bigX = 0;
+        this.state.bigO = 0;
+        this.state.bigSettled = 0;
+        this.state.activeBoard = -1;
+        this.state.toMove = 1;
+        this.state.winner = 0;
+        this.state.moveCount = 0;
+      }
+
       this.history.length = 0;
       this.lastMove = null;
       for (const entry of oldEntries) {
@@ -1810,19 +1968,48 @@
 
     // ── Review mode ──
 
+    _ensureReviewEntryAnalysisStub(entry) {
+      if (entry._analysis || !entry.classification) return;
+      entry._analysis = {
+        evaluation: 0,
+        forPlayer: entry.player != null ? entry.player : 1,
+        done: true,
+        restored: true,
+        topMoves: [],
+        simulations: 0,
+        elapsedMs: 0,
+      };
+    }
+
     _initReview() {
-      this.reviewIndex = 0;
+      this.reviewIndex = -1;
       this._autoClassifyIdx = -1;
       this._classifyStarted = false;
       this._classifyFinished = false;
       this._isAutoClassify = false;
       this._isAutoClassifyLive = false;
-      this._replayToIndex(0);
-      this.render();
-      this._updateReviewUI();
-      this._showReviewSummary();
-      this._renderEvalGraph();
-      this._updateClassifyProgress();
+      this._reviewCompleteCallbackDone = false;
+
+      if (this.reviewMoveHistory) {
+        for (const e of this.reviewMoveHistory) {
+          if (e.classification && !e._analysis) this._ensureReviewEntryAnalysisStub(e);
+        }
+      }
+
+      const wantIdx = Math.max(0, Math.min(this.reviewInitialIndex | 0,
+        this.reviewMoveHistory ? this.reviewMoveHistory.length : 0));
+
+      if (this.reviewSkipAutoClassify) {
+        this._classifyStarted = true;
+        this._classifyFinished = true;
+        this._reviewGoTo(wantIdx);
+        this._showReviewSummary();
+        this._renderEvalGraph();
+        this._updateClassifyProgress();
+        this._showCachedReviewAnalysis();
+        return;
+      }
+
       this._accuracyDotsInterval = setInterval(() => {
         if (this._classifyFinished) {
           clearInterval(this._accuracyDotsInterval);
@@ -1835,6 +2022,34 @@
         for (const b of boxes) b.textContent = '.'.repeat(n);
       }, 1200);
       this._startReviewAutoClassify();
+      this._reviewGoTo(wantIdx);
+      this._showReviewSummary();
+      this._renderEvalGraph();
+      this._updateClassifyProgress();
+    }
+
+    _fireReviewCompleteCallbackIfNeeded() {
+      if (!this.onReviewClassifyComplete || this._reviewCompleteCallbackDone) return;
+      if (!this.reviewMoveHistory || this.reviewMoveHistory.length === 0) return;
+      this._reviewCompleteCallbackDone = true;
+      const snap = this.reviewMoveHistory.map(e => {
+        const row = {
+          boardIdx: e.boardIdx,
+          cellIdx: e.cellIdx,
+          player: e.player,
+          prevActiveBoard: e.prevActiveBoard,
+          classification: e.classification != null ? e.classification : null,
+          moveInt: e.moveInt != null ? e.moveInt : e.boardIdx * 9 + e.cellIdx,
+          bookName: e.bookName != null ? e.bookName : null,
+          bookDesc: e.bookDesc != null ? e.bookDesc : null,
+        };
+        const ra = serializeReviewAnalysisForStorage(e._analysis);
+        if (ra) row.reviewAnalysis = ra;
+        return row;
+      });
+      try {
+        this.onReviewClassifyComplete(snap, this.reviewStorageRecordId);
+      } catch { /* ignore */ }
     }
 
     _startReviewAutoClassify() {
@@ -1858,6 +2073,7 @@
         this._updateClassifyProgress();
         this._showReviewSummary();
         this._showCachedReviewAnalysis();
+        this._fireReviewCompleteCallbackIfNeeded();
         return;
       }
       this._runAutoClassifyAt(this._autoClassifyIdx);
@@ -1879,7 +2095,7 @@
         type: 'analyze',
         requestId: this.analysisRequestId,
         state: tmpState.serialize(),
-        budgetMs: 2000,
+        budgetMs: getReviewClassifyBudgetMs(),
       };
       this._parallelProgress = new Array(pool.length);
       this._parallelFinal = new Array(pool.length);
@@ -1921,6 +2137,11 @@
       this.render();
       this._updateReviewUI();
       this._showCachedReviewAnalysis();
+      if (this.onReviewPersist && this.reviewMoveHistory && !this.reviewSkipAutoClassify) {
+        try {
+          this.onReviewPersist(this.reviewIndex, this.reviewMoveHistory, false);
+        } catch { /* ignore */ }
+      }
     }
 
     _showCachedReviewAnalysis() {
@@ -2107,6 +2328,7 @@
 
     destroy() {
       this.destroyed = true;
+      this._stopClockLoop();
       this._abortAnalysis();
       if (this.worker) {
         this.worker.terminate();
@@ -2128,9 +2350,22 @@
         clearInterval(this._accuracyDotsInterval);
         this._accuracyDotsInterval = null;
       }
+      if (this._onVisibilityChange) {
+        document.removeEventListener('visibilitychange', this._onVisibilityChange);
+        this._onVisibilityChange = null;
+      }
+      if (this.mode === 'review' && this.onReviewPersist && this.reviewMoveHistory && !this.reviewSkipAutoClassify && !this._classifyFinished) {
+        try {
+          this.onReviewPersist(this.reviewIndex, this.reviewMoveHistory, true);
+        } catch { /* ignore */ }
+      }
       this.container.innerHTML = '';
     }
   }
 
   window.GameController = GameController;
+  window.UTTTReviewAnalysisStorage = {
+    serialize: serializeReviewAnalysisForStorage,
+    parse: parseReviewAnalysisFromStorage,
+  };
 })();

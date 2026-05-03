@@ -3,7 +3,7 @@
 'use strict';
 
 global.self = global;
-require('./engine.js');
+require('./engines/engine.js');
 const { UTTTState, MCTSSearcher, mctsSearch, IS_WIN, WIN_COMPLETIONS } = self.UTTTEngine;
 
 function assert(cond, msg) {
