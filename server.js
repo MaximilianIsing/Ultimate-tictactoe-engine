@@ -13,7 +13,39 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+
+/** Explicit types — strict MIME checking (Chrome) rejects CSS/workers as text/plain if proxies mislabel them. */
+function staticContentType(res, filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.mjs': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.ico': 'image/x-icon',
+    '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.wasm': 'application/wasm',
+    '.map': 'application/json; charset=utf-8',
+  };
+  const ct = types[ext];
+  if (ct) res.setHeader('Content-Type', ct);
+}
+
+app.use(
+  express.static(path.join(__dirname), {
+    setHeaders(res, filePath) {
+      staticContentType(res, filePath);
+    },
+  }),
+);
 
 // ── Room management ──
 
@@ -196,7 +228,10 @@ wss.on('connection', (ws) => {
 
 const PUZZLE_BUFFER = 10;
 const INITIAL_POOL_TARGET = 500;
-const PUZZLES_FILE = path.join(__dirname, 'data', 'puzzles.json');
+const PUZZLES_DATA_DIR = process.env.PUZZLES_DATA_DIR
+  ? path.resolve(process.env.PUZZLES_DATA_DIR)
+  : path.join(__dirname, 'data');
+const PUZZLES_FILE = path.join(PUZZLES_DATA_DIR, 'puzzles.json');
 
 const puzzlePool = [];
 const userSeen = new Map();
