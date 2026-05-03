@@ -352,9 +352,10 @@
     const wrap = document.createElement('div');
     wrap.className = 'history-row-class-strip';
     wrap.setAttribute('aria-label', 'Move classifications in order');
-    for (const m of moves) {
+    moves.forEach((m, i) => {
       const slot = document.createElement('span');
       slot.className = 'history-rating-slot';
+      const player = m.player != null ? m.player : (i % 2 === 0 ? 1 : 2);
       const cls = m.classification;
       const src = cls && HISTORY_CLASS_ICONS[cls];
       if (src) {
@@ -369,8 +370,14 @@
         slot.textContent = '\u00B7';
         slot.setAttribute('aria-hidden', 'true');
       }
+      const side = document.createElement('span');
+      side.className =
+        player === 1 ? 'history-rating-player history-rating-player--x' : 'history-rating-player history-rating-player--o';
+      side.textContent = player === 1 ? 'X' : 'O';
+      side.setAttribute('aria-hidden', 'true');
+      slot.appendChild(side);
       wrap.appendChild(slot);
-    }
+    });
     return wrap;
   }
 
