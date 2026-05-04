@@ -74,9 +74,14 @@
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock"
         },
+        "image": "/media/logo/logo256x256.png",
         "publisher": {
           "@type": "Organization",
-          "name": "Ultimate Tic-Tac-Toe"
+          "name": "Ultimate Tic-Tac-Toe",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "/media/logo/logo256x256.png"
+          }
         }
       },
       {
@@ -86,6 +91,7 @@
         "applicationCategory": "GameApplication",
         "operatingSystem": "Web",
         "browserRequirements": "Requires JavaScript",
+        "image": "/media/logo/logo256x256.png",
         "description": "Free web app: local games, Monte Carlo Tree Search AI, WebSocket online rooms with clocks, tactical puzzles, opening repertoire, position analysis and move classification review.",
         "featureList": [
           "Local two-player",
@@ -112,6 +118,10 @@
       var origin = location.origin;
       var canon = document.querySelector('link[rel="canonical"]');
       if (canon) canon.href = origin + '/';
+      document.querySelectorAll('link[rel="alternate"][hreflang]').forEach(function (link) {
+        var h = link.getAttribute('href');
+        if (h && h.charAt(0) === '/' && h.charAt(1) !== '/') link.setAttribute('href', origin + h);
+      });
       var ogUrl = document.querySelector('meta[property="og:url"]');
       if (ogUrl) ogUrl.content = origin + '/';
       function absImg(sel) {
@@ -122,6 +132,33 @@
       }
       absImg('meta[property="og:image"]');
       absImg('meta[name="twitter:image"]');
+
+      var ldScript = document.querySelector('script[type="application/ld+json"]');
+      if (ldScript && ldScript.textContent) {
+        try {
+          var data = JSON.parse(ldScript.textContent);
+          function absolutizeLdUrls(node) {
+            if (node == null || typeof node !== 'object') return;
+            if (Array.isArray(node)) {
+              for (var i = 0; i < node.length; i++) absolutizeLdUrls(node[i]);
+              return;
+            }
+            for (var key in node) {
+              if (!Object.prototype.hasOwnProperty.call(node, key)) continue;
+              var val = node[key];
+              if (typeof val === 'string') {
+                if (val.charAt(0) === '/' && val.charAt(1) !== '/') node[key] = origin + val;
+              } else if (typeof val === 'object') {
+                absolutizeLdUrls(val);
+              }
+            }
+          }
+          absolutizeLdUrls(data);
+          ldScript.textContent = JSON.stringify(data);
+        } catch (ignore) {
+          /* keep original JSON-LD */
+        }
+      }
     });
   </script>
 

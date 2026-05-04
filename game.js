@@ -227,6 +227,38 @@
     max: 30000,
   };
 
+  function moveInt(board, cell) { return LABEL_TO_IDX[board] * 9 + LABEL_TO_IDX[cell]; }
+
+  const BOTS = [
+    { id: 'arthur', name: 'Arthur', tier: 'Very Easy', tierIcon: 'media/difficulties/Very%20Easy.png',
+      budgetMs: 0, pickFromTop: 81, avatar: 'media/bots/Arthur.png', openingMoves: [] },
+    { id: 'nico', name: 'Nico', tier: 'Easy', tierIcon: 'media/difficulties/Easy.png',
+      budgetMs: 100, pickFromTop: 5, avatar: 'media/bots/Nico.png', openingMoves: [moveInt('C','C')] },
+    { id: 'sasha', name: 'Sasha', tier: 'Easy', tierIcon: 'media/difficulties/Easy.png',
+      budgetMs: 100, pickFromTop: 5, avatar: 'media/bots/Sasha.png',
+      openingMoves: [moveInt('TL','TL'), moveInt('TR','TR'), moveInt('BR','BR'), moveInt('BL','BL')] },
+    { id: 'victor', name: 'Victor', tier: 'Medium', tierIcon: 'media/difficulties/Medium.png',
+      budgetMs: 250, pickFromTop: 3, avatar: 'media/bots/Victor.png',
+      openingMoves: [moveInt('C','T'), moveInt('C','L'), moveInt('C','R'), moveInt('C','B')] },
+    { id: 'jamie', name: 'Jamie', tier: 'Medium', tierIcon: 'media/difficulties/Medium.png',
+      budgetMs: 250, pickFromTop: 3, avatar: 'media/bots/Jamie.png',
+      openingMoves: [moveInt('BR','C'), moveInt('BL','C'), moveInt('R','R')] },
+    { id: 'sarah', name: 'Sarah', tier: 'Hard', tierIcon: 'media/difficulties/Hard.png',
+      budgetMs: 400, pickFromTop: 2, avatar: 'media/bots/Sarah.png',
+      openingMoves: [moveInt('B','T'), moveInt('T','B'), moveInt('L','R'), moveInt('R','L')] },
+    { id: 'adrian', name: 'Adrian', tier: 'Hard', tierIcon: 'media/difficulties/Hard.png',
+      budgetMs: 400, pickFromTop: 2, avatar: 'media/bots/Adrian.png',
+      openingMoves: [moveInt('BR','R'), moveInt('BL','L')] },
+    { id: 'anna', name: 'Anna', tier: 'Very Hard', tierIcon: 'media/difficulties/Very%20Hard.png',
+      budgetMs: 500, pickFromTop: 2, avatar: 'media/bots/Anna.png',
+      openingMoves: [moveInt('C','TL'), moveInt('C','T'), moveInt('C','TR'), moveInt('C','L'), moveInt('C','C'), moveInt('C','R'), moveInt('C','BL'), moveInt('C','B'), moveInt('C','BR')] },
+    { id: 'dante', name: 'Dante', tier: 'Extreme', tierIcon: 'media/difficulties/Extreme.png',
+      budgetMs: 1600, pickFromTop: 1, avatar: 'media/bots/Dante.png', openingMoves: [] },
+  ];
+
+  const BOT_MAP = {};
+  for (const b of BOTS) BOT_MAP[b.id] = b;
+
   function classifyMove(preMoveAnalysis, playedMoveInt) {
     if (!preMoveAnalysis) return null;
     if (preMoveAnalysis.forced) return 'forced';
@@ -285,6 +317,8 @@
       this.mode = options.mode || 'local';
       this.difficulty = options.difficulty || 'hard';
       this.humanSide = options.humanSide || 'x';
+      this.botConfig = BOT_MAP[options.botId] || BOT_MAP['adrian'];
+      this.onBotChanged = typeof options.onBotChanged === 'function' ? options.onBotChanged : null;
       this.onlineManager = options.onlineManager || null;
       this.onGameOver = options.onGameOver || null;
       this.onMoveApplied = options.onMoveApplied || null;
@@ -312,6 +346,7 @@
       this.forceShowAnalysis = false;
       this.thinkingBudgetMs = 5000;
       this.destroyed = false;
+      this._aiWaitingToStart = this.mode === 'ai';
       this.reviewIndex = 0;
       this.onlineReady = this.mode !== 'online';
       this.timeControlId = normalizeTimeControlId(options.timeControl);
@@ -451,27 +486,16 @@
       panel.innerHTML = '';
 
       if (this.mode === 'ai') {
+        const botCards = BOTS.map(b => `
+          <button class="bot-card${b.id === this.botConfig.id ? ' is-active' : ''}" data-bot="${b.id}">
+            <img class="bot-avatar" src="${b.avatar}" alt="${b.name}" draggable="false">
+            <span class="bot-name">${b.name}</span>
+            <span class="bot-tier"><img class="bot-tier-icon" src="${b.tierIcon}" alt="" draggable="false">${b.tier}</span>
+          </button>`).join('');
         panel.innerHTML += `
           <div class="panel-section">
-            <div class="panel-section-title">Difficulty</div>
-            <div class="difficulty-cards">
-              <button class="difficulty-card${this.difficulty === 'easy' ? ' is-active' : ''}" data-diff="easy">
-                <span class="diff-name">Easy</span>
-                <span class="diff-desc">0.5s think</span>
-              </button>
-              <button class="difficulty-card${this.difficulty === 'medium' ? ' is-active' : ''}" data-diff="medium">
-                <span class="diff-name">Medium</span>
-                <span class="diff-desc">2s think</span>
-              </button>
-              <button class="difficulty-card${this.difficulty === 'hard' ? ' is-active' : ''}" data-diff="hard">
-                <span class="diff-name">Hard</span>
-                <span class="diff-desc">5s think</span>
-              </button>
-              <button class="difficulty-card${this.difficulty === 'max' ? ' is-active' : ''}" data-diff="max">
-                <span class="diff-name">Max</span>
-                <span class="diff-desc">30s think</span>
-              </button>
-            </div>
+            <div class="panel-section-title">Opponent</div>
+            <div class="bot-grid">${botCards}</div>
           </div>
           <div class="panel-section side-picker-section">
             <div class="panel-section-title">Play as</div>
@@ -479,6 +503,9 @@
               <button class="seg-btn${this.humanSide === 'x' ? ' is-active' : ''}" data-side="x" data-mark="X" role="radio">X \u2014 first</button>
               <button class="seg-btn${this.humanSide === 'o' ? ' is-active' : ''}" data-side="o" data-mark="O" role="radio">O \u2014 second</button>
             </div>
+          </div>
+          <div class="panel-section ai-start-section">
+            <button class="btn-primary ai-start-btn">Start</button>
           </div>`;
       }
 
@@ -577,6 +604,10 @@
       if (this.mode === 'ai') {
         panel.innerHTML += `
           <div class="panel-section engine-status-section">
+            <div class="bot-status-header">
+              <img class="bot-status-avatar" src="${this.botConfig.avatar}" alt="${this.botConfig.name}" draggable="false">
+              <span class="bot-status-name">${this.botConfig.name}</span>
+            </div>
             <div class="status-line">Your move</div>
             <div class="status-stats">\u2014</div>
           </div>`;
@@ -901,7 +932,7 @@
     }
 
     _getCurrentBudget() {
-      if (this.mode === 'ai') return AI_BUDGETS[this.difficulty] || 5000;
+      if (this.mode === 'ai') return this.botConfig.budgetMs || 500;
       if (this.mode === 'analysis' || this.mode === 'review') {
         return this.thinkingBudgetMs;
       }
@@ -925,15 +956,19 @@
       }
 
       if (this.mode === 'ai') {
-        const diffCards = this.els.panel.querySelectorAll('.difficulty-card');
-        diffCards.forEach(card => {
+        const botCards = this.els.panel.querySelectorAll('.bot-card');
+        botCards.forEach(card => {
           card.addEventListener('click', () => {
-            this.difficulty = card.dataset.diff;
-            diffCards.forEach(c => c.classList.toggle('is-active', c === card));
-            if (this.state.winner === 0 && this._isBotTurn()) {
-              this._abortAnalysis();
-              this._startAnalysis();
-            }
+            const newBot = BOT_MAP[card.dataset.bot];
+            if (!newBot || newBot.id === this.botConfig.id) return;
+            this.botConfig = newBot;
+            botCards.forEach(c => c.classList.toggle('is-active', c === card));
+            const avatarEl = this.els.panel.querySelector('.bot-status-avatar');
+            const nameEl = this.els.panel.querySelector('.bot-status-name');
+            if (avatarEl) { avatarEl.src = newBot.avatar; avatarEl.alt = newBot.name; }
+            if (nameEl) nameEl.textContent = newBot.name;
+            if (this.onBotChanged) this.onBotChanged(newBot.id);
+            this.reset();
           });
         });
 
@@ -950,6 +985,17 @@
             this._afterSideChange();
           });
         });
+
+        const startBtn = this.els.panel.querySelector('.ai-start-btn');
+        if (startBtn) {
+          startBtn.addEventListener('click', () => {
+            if (!this._aiWaitingToStart) return;
+            this._aiWaitingToStart = false;
+            const startSection = this.els.panel.querySelector('.ai-start-section');
+            if (startSection) startSection.style.display = 'none';
+            this._afterMove();
+          });
+        }
       }
 
       if (this.mode === 'local') {
@@ -1303,6 +1349,7 @@
 
     _isHumanTurn() {
       if (this.state.winner !== 0) return false;
+      if (this._aiWaitingToStart) return false;
       if (this.mode === 'analysis') return true;
       if (this.mode === 'review') return false;
       if (this.mode === 'local') return true;
@@ -1406,13 +1453,55 @@
       this._syncClockActiveSide();
       if (this._shouldRunClock()) this._startClockLoop();
 
-      if (this._shouldAutoAnalyze()) {
-        this._startAnalysis();
+      if (this.mode === 'ai' && this._aiWaitingToStart) {
+        this._setEngineStatus('Waiting to start', '');
+        return;
       }
+
       if (this.mode === 'ai' && this._isBotTurn()) {
-        this._setEngineStatus('Engine thinking\u2026', '');
+        const bot = this.botConfig;
+        const botName = bot ? bot.name : 'Bot';
+
+        if (bot && bot.budgetMs === 0) {
+          const legal = this.state.legalMoves();
+          if (legal.length > 0) {
+            const m = legal[Math.floor(Math.random() * legal.length)];
+            setTimeout(() => {
+              if (this.destroyed || this.state.winner !== 0) return;
+              const bb = (m / 9) | 0, cc = m - bb * 9;
+              if (this._isLegalMove(bb, cc)) {
+                this._applyMove(bb, cc, null);
+                this._afterMove();
+              }
+            }, 800);
+            this._setEngineStatus(`${botName} is thinking\u2026`, '');
+          }
+          return;
+        }
+
+        if (bot && bot.openingMoves.length > 0 && this.history.length === 0 && this.humanSide === 'o') {
+          const picks = bot.openingMoves;
+          const m = picks[Math.floor(Math.random() * picks.length)];
+          setTimeout(() => {
+            if (this.destroyed || this.state.winner !== 0) return;
+            const bb = (m / 9) | 0, cc = m - bb * 9;
+            if (this._isLegalMove(bb, cc)) {
+              this._applyMove(bb, cc, null);
+              this._afterMove();
+            }
+          }, 800);
+          this._setEngineStatus(`${botName} is thinking\u2026`, '');
+          return;
+        }
+
+        this._botThinkStart = performance.now();
+        this._setEngineStatus(`${botName} is thinking\u2026`, '');
       } else if (!this._shouldShowAnalysisUI()) {
         this._setEngineStatus('Your move', '');
+      }
+
+      if (this._shouldAutoAnalyze()) {
+        this._startAnalysis();
       }
     }
 
@@ -1421,17 +1510,15 @@
         this.render();
         return;
       }
-      if (this.currentAnalysis && this.currentAnalysis.done && this.currentAnalysis.bestMove != null && this._isBotTurn()) {
-        this.render();
-        this._onAnalysisComplete(this.currentAnalysis);
-      } else if (!this.currentAnalysis) {
-        this.render();
-        this._startAnalysis();
+      this.render();
+      if (this._isBotTurn()) {
+        this._abortAnalysis();
+        this.currentAnalysis = null;
+        this._afterMove();
       } else {
-        this.render();
-      }
-      if (!this._shouldShowAnalysisUI()) {
-        this._setEngineStatus('Your move', '');
+        if (!this._shouldShowAnalysisUI()) {
+          this._setEngineStatus('Your move', '');
+        }
       }
     }
 
@@ -1443,15 +1530,43 @@
       if (this.state.winner !== 0) return;
 
       if (this._isBotTurn() && result.bestMove != null) {
-        const m = result.bestMove;
+        const m = this._pickBotMove(result);
         const b = (m / 9) | 0;
         const c = m - b * 9;
-        if (this._isLegalMove(b, c)) {
-          const preMoveAnalysis = this.currentAnalysis;
-          this._applyMove(b, c, preMoveAnalysis);
-          this._afterMove();
+        const MIN_BOT_DELAY = 800;
+        const elapsed = this._botThinkStart ? performance.now() - this._botThinkStart : Infinity;
+        const remaining = Math.max(0, MIN_BOT_DELAY - elapsed);
+        const playMove = () => {
+          if (this.destroyed || this.state.winner !== 0) return;
+          if (this._isLegalMove(b, c)) {
+            const preMoveAnalysis = this.currentAnalysis;
+            this._applyMove(b, c, preMoveAnalysis);
+            this._afterMove();
+          }
+        };
+        if (remaining > 0) {
+          setTimeout(playMove, remaining);
+        } else {
+          playMove();
         }
       }
+    }
+
+    _pickBotMove(result) {
+      const bot = this.botConfig;
+      if (!bot || bot.pickFromTop <= 1) return result.bestMove;
+      const top = result.topMoves;
+      if (!top || top.length <= 1) return result.bestMove;
+      const candidates = top.slice(0, Math.min(bot.pickFromTop, top.length));
+      const totalVisits = candidates.reduce((s, m) => s + (m.visits || 0), 0);
+      if (totalVisits <= 0) return result.bestMove;
+      const r = Math.random() * totalVisits;
+      let acc = 0;
+      for (const c of candidates) {
+        acc += c.visits || 0;
+        if (r < acc) return c.move;
+      }
+      return result.bestMove;
     }
 
     _classifyAtIndex(moveIdx, analysis) {
@@ -1922,9 +2037,13 @@
         const old = cell.querySelector('.cell-classification');
         if (old) old.remove();
       }
+      const aiPlayer = this.mode === 'ai'
+        ? (this.humanSide === 'x' ? 2 : 1)
+        : null;
       for (const entry of this.history) {
         if (!entry.classification) continue;
         if (entry.classification === 'book' && this.mode !== 'review' && this.mode !== 'analysis') continue;
+        if (aiPlayer != null && entry.player === aiPlayer) continue;
         const idx = entry.boardIdx * 9 + entry.cellIdx;
         const cell = this.cellEls[idx];
         if (!cell) continue;
@@ -2050,6 +2169,11 @@
       this.hoveredMove = null;
       this.forceShowAnalysis = false;
       this.els.winnerOverlay.classList.add('hidden');
+      if (this.mode === 'ai') {
+        this._aiWaitingToStart = true;
+        const startSection = this.els.panel.querySelector('.ai-start-section');
+        if (startSection) startSection.style.display = '';
+      }
       this._refreshClockRow();
       this._resetClockTimesFromPreset();
       this._afterMove();
@@ -2705,6 +2829,7 @@
   }
 
   window.GameController = GameController;
+  window.UTTT_BOTS = BOTS;
   window.UTTTReviewAnalysisStorage = {
     serialize: serializeReviewAnalysisForStorage,
     parse: parseReviewAnalysisFromStorage,

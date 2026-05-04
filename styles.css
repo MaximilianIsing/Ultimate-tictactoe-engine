@@ -620,6 +620,13 @@ html[data-uttt-reduce-motion="1"] .connection-dot.waiting {
   font-weight: 700;
   font-size: 0.95rem;
 }
+.history-tier-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: -2px;
+  margin-left: 2px;
+}
 
 .winner-inline-wins {
   display: inline-flex;
@@ -2081,6 +2088,94 @@ button:disabled {
   color: var(--muted);
   margin-top: 2px;
   display: block;
+}
+
+/* Bot selection grid */
+.bot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.bot-card {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 8px 4px 6px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 200ms ease;
+  color: var(--text);
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.bot-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--panel-border-hover);
+}
+
+.bot-card.is-active {
+  background: rgba(110, 168, 245, 0.18);
+  border-color: rgba(110, 168, 245, 0.45);
+}
+
+.bot-avatar {
+  width: 36px;
+  height: auto;
+  border-radius: 6px;
+}
+
+.bot-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: block;
+  line-height: 1.1;
+}
+
+.bot-tier {
+  font-size: 0.65rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  line-height: 1.1;
+}
+.bot-tier-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.bot-status-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.bot-status-avatar {
+  width: 32px;
+  height: auto;
+  border-radius: 6px;
+}
+
+.bot-status-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.ai-start-section {
+  text-align: center;
+}
+.ai-start-btn {
+  width: 100%;
 }
 
 .time-control-cards {

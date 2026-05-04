@@ -409,7 +409,7 @@
     } catch { /* ignore */ }
   }
 
-  function recordFinishedGame(mode, winner, movesClone) {
+  function recordFinishedGame(mode, winner, movesClone, extra) {
     const list = loadRecentGames();
     const rec = {
       id: newRecentGameId(),
@@ -419,6 +419,8 @@
       moves: movesClone,
       reviewDone: false,
     };
+    if (extra && extra.botName) rec.botName = extra.botName;
+    if (extra && extra.botTierIcon) rec.botTierIcon = extra.botTierIcon;
     list.unshift(rec);
     saveRecentGames(list);
     return rec.id;
@@ -528,9 +530,19 @@
     return escapeHtml('Draw');
   }
 
-  function modeShortLabel(mode) {
+  function modeShortLabel(mode, rec) {
     if (mode === 'online') return 'Online';
-    if (mode === 'ai') return 'vs AI';
+    if (mode === 'ai') {
+      let label = 'vs AI';
+      let icon = rec && rec.botTierIcon;
+      if (!icon && rec && rec.botName && window.UTTT_BOTS) {
+        const bot = window.UTTT_BOTS.find(b => b.name === rec.botName);
+        if (bot) icon = bot.tierIcon;
+      }
+      if (icon) label += `\u00A0<img class="history-tier-icon" src="${icon}" alt="">`;
+      if (rec && rec.botName) label += ` (${rec.botName})`;
+      return label;
+    }
     return 'Local';
   }
 
@@ -688,7 +700,7 @@
       textCol.className = 'home-recent-row-text history-row-main';
       if (rec.reviewDone) {
         textCol.innerHTML = `
-          <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+          <span class="history-row-title">${modeShortLabel(rec.mode, rec)} · ${winnerWinsHtml(rec.winner)}</span>
           <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${normMoves.length} moves \u00B7 Reviewed</span>
         `;
         textCol.appendChild(buildHistoryClassificationStrip(normMoves));
@@ -696,7 +708,7 @@
       } else {
         const sumLine = `${normMoves.length} moves · Review pending`;
         textCol.innerHTML = `
-          <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+          <span class="history-row-title">${modeShortLabel(rec.mode, rec)} · ${winnerWinsHtml(rec.winner)}</span>
           <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${escapeHtml(sumLine)}</span>
         `;
       }
@@ -749,7 +761,7 @@
         main.className = 'history-row-main';
         if (rec.reviewDone) {
           main.innerHTML = `
-            <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+            <span class="history-row-title">${modeShortLabel(rec.mode, rec)} · ${winnerWinsHtml(rec.winner)}</span>
             <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${normMoves.length} moves \u00B7 Reviewed</span>
           `;
           main.appendChild(buildHistoryClassificationStrip(normMoves));
@@ -757,7 +769,7 @@
         } else {
           const sumLine = `${normMoves.length} moves · Review pending`;
           main.innerHTML = `
-            <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+            <span class="history-row-title">${modeShortLabel(rec.mode, rec)} · ${winnerWinsHtml(rec.winner)}</span>
             <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${escapeHtml(sumLine)}</span>
           `;
         }
@@ -929,10 +941,23 @@
 
     if (mode === 'online') {
       _initOnlineGame(gameContainer, roomCode);
+    } else if (mode === 'ai') {
+      const savedBot = _getStoredBotId();
+      currentGame = new GameController(gameContainer, {
+        mode: 'ai',
+        botId: savedBot,
+        humanSide: 'x',
+        onBotChanged: (id) => _setStoredBotId(id),
+        onGameOver: (winner, history) => {
+          const bot = currentGame && currentGame.botConfig;
+          const botName = bot ? bot.name : null;
+          const botTierIcon = bot ? bot.tierIcon : null;
+          lastFinishedGameRecordId = recordFinishedGame('ai', winner, cloneMovesForStorage(history), { botName, botTierIcon });
+        },
+      });
     } else {
       currentGame = new GameController(gameContainer, {
         mode: mode,
-        difficulty: 'hard',
         humanSide: 'x',
         onGameOver: (winner, history) => {
           lastFinishedGameRecordId = recordFinishedGame(mode, winner, cloneMovesForStorage(history));
@@ -1149,6 +1174,14 @@
       }
       currentGame = new GameController(gameContainer, opts);
     }
+  }
+
+  const BOT_ID_KEY = 'uttt-selected-bot';
+  function _getStoredBotId() {
+    try { return localStorage.getItem(BOT_ID_KEY) || 'adrian'; } catch { return 'adrian'; }
+  }
+  function _setStoredBotId(id) {
+    try { localStorage.setItem(BOT_ID_KEY, id); } catch { /* ignore */ }
   }
 
   const REVIEW_CLASSIFY_BUDGET_SEC_KEY = 'uttt-review-classify-budget-sec';
@@ -1856,7 +1889,13 @@
     navigate: navigate,
     reloadUiPreferences: () => applyUiSettings(loadUiSettings()),
     startReview: (history) => {
-      pendingReviewHistory = cloneMovesForStorage(history);
+      const moves = cloneMovesForStorage(history);
+      for (const m of moves) {
+        if (m.classification && m.classification !== 'book') {
+          m.classification = null;
+        }
+      }
+      pendingReviewHistory = moves;
       pendingReviewSkipAutoClassify = false;
       pendingReviewStorageRecordId = lastFinishedGameRecordId;
       pendingReviewFromHistory = false;
