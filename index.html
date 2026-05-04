@@ -4,12 +4,133 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#312e2b" />
-  <title>Ultimate Tic-Tac-Toe</title>
+
+  <title>Ultimate Tic-Tac-Toe — Online, AI &amp; Analysis | Free in Browser</title>
+  <meta name="description" content="Play Ultimate Tic-Tac-Toe (9-board meta tic-tac-toe) in your browser: local pass-and-play, MCTS AI, online rooms with clocks, puzzles, opening library, deep analysis and move-quality review." />
+  <meta name="keywords" content="ultimate tic tac toe, meta tic tac toe, 9 board tic tac toe, uttt, browser game, free online, MCTS AI, strategic tic tac toe, multiplayer, puzzle, opening book, game analysis" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="googlebot" content="index, follow" />
+  <meta name="application-name" content="Ultimate Tic-Tac-Toe" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="format-detection" content="telephone=no" />
+
+  <link rel="canonical" href="/" />
+  <link rel="alternate" hreflang="en" href="/" />
+  <link rel="alternate" hreflang="x-default" href="/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Ultimate Tic-Tac-Toe" />
+  <meta property="og:title" content="Ultimate Tic-Tac-Toe — Online, AI &amp; Analysis" />
+  <meta property="og:description" content="Nine nested boards, routing rules, MCTS engine, online play with time controls, puzzles, openings, and full game review." />
+  <meta property="og:image" content="/media/logo/logo256x256.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="256" />
+  <meta property="og:image:height" content="256" />
+  <meta property="og:image:alt" content="Ultimate Tic-Tac-Toe logo" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:url" content="/" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Ultimate Tic-Tac-Toe — Online, AI &amp; Analysis" />
+  <meta name="twitter:description" content="Play meta tic-tac-toe in your browser with AI, online matches, puzzles, openings, and engine analysis." />
+  <meta name="twitter:image" content="/media/logo/logo256x256.png" />
+  <meta name="twitter:image:alt" content="Ultimate Tic-Tac-Toe logo" />
+
+  <!-- Apple / PWA hints -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="UTTT" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "/#website",
+        "url": "/",
+        "name": "Ultimate Tic-Tac-Toe",
+        "description": "Browser Ultimate Tic-Tac-Toe with AI (MCTS), online multiplayer, puzzles, openings library, analysis board and reviewed game history.",
+        "inLanguage": "en-US",
+        "potentialAction": {
+          "@type": "ReadAction",
+          "target": "/"
+        }
+      },
+      {
+        "@type": "VideoGame",
+        "@id": "/#game",
+        "name": "Ultimate Tic-Tac-Toe",
+        "description": "Nine-board nested tic-tac-toe with meta-board routing: win local boards to claim meta cells and complete three in a row on the large grid.",
+        "genre": ["Board Game", "Strategy Game", "Puzzle"],
+        "gamePlatform": ["Web browser"],
+        "playMode": ["SinglePlayer", "MultiPlayer"],
+        "applicationCategory": "Game",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Ultimate Tic-Tac-Toe"
+        }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "/#app",
+        "name": "Ultimate Tic-Tac-Toe",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript",
+        "description": "Free web app: local games, Monte Carlo Tree Search AI, WebSocket online rooms with clocks, tactical puzzles, opening repertoire, position analysis and move classification review.",
+        "featureList": [
+          "Local two-player",
+          "Adjustable AI difficulty (MCTS)",
+          "Online rooms with shareable links",
+          "Bullet, blitz, rapid and unlimited clocks",
+          "Interactive puzzles",
+          "Opening library",
+          "Analysis board with engine lines",
+          "Game history with review and accuracy"
+        ],
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var origin = location.origin;
+      var canon = document.querySelector('link[rel="canonical"]');
+      if (canon) canon.href = origin + '/';
+      var ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.content = origin + '/';
+      function absImg(sel) {
+        var m = document.querySelector(sel);
+        if (!m || !m.content || m.content.indexOf('http') === 0) return;
+        var path = m.content.replace(/^\//, '');
+        m.content = origin + '/' + path;
+      }
+      absImg('meta[property="og:image"]');
+      absImg('meta[name="twitter:image"]');
+    });
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="media/logo/logo256x256.png" type="image/png" />
+  <link rel="apple-touch-icon" href="media/logo/logo256x256.png" />
 </head>
 <body>
   <nav class="sidebar" id="sidebar" aria-label="Main navigation">
@@ -55,6 +176,14 @@
   <main class="main-content" id="content">
     <!-- Pages render here -->
   </main>
+
+  <noscript>
+    <div class="noscript-seo" style="padding:1.5rem;font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;line-height:1.5;">
+      <h1>Ultimate Tic-Tac-Toe</h1>
+      <p>This site is an interactive <strong>Ultimate Tic-Tac-Toe</strong> (nine-board meta tic-tac-toe) game with AI, online play, puzzles, openings, and analysis. Enable JavaScript to play.</p>
+      <p>Rules in short: nine small 3×3 boards form one large meta-board; your local square sends the opponent to the matching meta-board; win three small boards in a row on the meta-grid to win the match.</p>
+    </div>
+  </noscript>
 
   <script src="engines/engine.js"></script>
   <script src="engines/enginev2.js"></script>

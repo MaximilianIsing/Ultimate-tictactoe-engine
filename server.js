@@ -14,6 +14,73 @@ const wss = new WebSocketServer({ server });
 
 app.use(express.json());
 
+function siteBaseUrl(req) {
+  const rawProto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const proto = String(rawProto).split(',')[0].trim();
+  const host = req.headers.host || `localhost:${process.env.PORT || 3000}`;
+  return `${proto}://${host}`;
+}
+
+function xmlEscape(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Hash routes mirror app.js — Google may collapse to origin; still useful for discovery & other tools. */
+const SITEMAP_ROUTES = [
+  { hash: '', priority: 1.0, changefreq: 'weekly' },
+  { hash: '#/play/local', priority: 0.9, changefreq: 'weekly' },
+  { hash: '#/play/online', priority: 0.9, changefreq: 'weekly' },
+  { hash: '#/play/ai', priority: 0.9, changefreq: 'weekly' },
+  { hash: '#/puzzles', priority: 0.85, changefreq: 'weekly' },
+  { hash: '#/analysis', priority: 0.85, changefreq: 'weekly' },
+  { hash: '#/history', priority: 0.75, changefreq: 'weekly' },
+  { hash: '#/openings', priority: 0.8, changefreq: 'weekly' },
+  { hash: '#/help', priority: 0.8, changefreq: 'monthly' },
+  { hash: '#/settings', priority: 0.6, changefreq: 'monthly' },
+];
+
+app.get('/sitemap.xml', (req, res) => {
+  const base = siteBaseUrl(req).replace(/\/$/, '');
+  const lastmod = new Date().toISOString().slice(0, 10);
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ];
+  for (const r of SITEMAP_ROUTES) {
+    const loc = r.hash ? `${base}/${r.hash}` : `${base}/`;
+    lines.push('  <url>');
+    lines.push(`    <loc>${xmlEscape(loc)}</loc>`);
+    lines.push(`    <lastmod>${lastmod}</lastmod>`);
+    lines.push(`    <changefreq>${r.changefreq}</changefreq>`);
+    lines.push(`    <priority>${r.priority}</priority>`);
+    lines.push('  </url>');
+  }
+  lines.push('</urlset>');
+  res.type('application/xml');
+  res.send(lines.join('\n'));
+});
+
+app.get('/robots.txt', (req, res) => {
+  const base = siteBaseUrl(req).replace(/\/$/, '');
+  res.type('text/plain');
+  res.send(
+    [
+      '# https://www.robotstxt.org/',
+      'User-agent: *',
+      'Allow: /',
+      '',
+      'Disallow: /api/',
+      '',
+      `Sitemap: ${base}/sitemap.xml`,
+      '',
+    ].join('\n'),
+  );
+});
+
 /** Explicit types — strict MIME checking (Chrome) rejects CSS/workers as text/plain if proxies mislabel them. */
 function staticContentType(res, filePath) {
   const ext = path.extname(filePath).toLowerCase();

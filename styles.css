@@ -498,8 +498,8 @@ html[data-uttt-reduce-motion="1"] .connection-dot.waiting {
 
 .home-recent-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 14px;
   text-align: left;
   padding: 10px 14px;
   border-radius: var(--radius-md);

@@ -299,15 +299,6 @@
     return { counts, bad, shine, moveCount: moves.length };
   }
 
-  function formatHistoryReviewSummaryLine(summary) {
-    if (!summary || !summary.counts) return '';
-    const parts = [];
-    if (summary.shine > 0) parts.push(`${summary.shine} great+`);
-    if (summary.bad > 0) parts.push(`${summary.bad} inaccuracies+`);
-    if (parts.length === 0) return `${summary.moveCount} moves`;
-    return `${parts.join(' \u00B7 ')} \u00B7 ${summary.moveCount} moves`;
-  }
-
   /** Same paths as game.js CLASSIFICATION_ICONS (history list runs outside GameView). */
   const HISTORY_CLASS_ICONS = {
     brilliant: 'media/classifications/Brilliant.png',
@@ -691,17 +682,24 @@
       row.type = 'button';
       row.className = 'home-recent-row';
       row.dataset.recordId = rec.id;
-      const sumLine = rec.reviewDone ? formatHistoryReviewSummaryLine(rec.reviewSummary) : `${rec.moves.length} moves`;
-      row.appendChild(buildHistoryEndPositionPreview(rec.moves, { compact: true }));
+      const normMoves = normalizeStoredMoves(rec.moves);
+      row.appendChild(buildHistoryEndPositionPreview(rec.moves, { compact: false }));
       const textCol = document.createElement('div');
-      textCol.className = 'home-recent-row-text';
-      textCol.innerHTML = `
-        <div class="home-recent-row-head">
-          <span class="home-recent-meta">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
-          ${rec.reviewDone ? '<span class="history-badge history-badge--compact">Reviewed</span>' : ''}
-        </div>
-        <span class="home-recent-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))}${sumLine ? ` · ${escapeHtml(sumLine)}` : ''}</span>
-      `;
+      textCol.className = 'home-recent-row-text history-row-main';
+      if (rec.reviewDone) {
+        textCol.innerHTML = `
+          <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+          <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${normMoves.length} moves \u00B7 Reviewed</span>
+        `;
+        textCol.appendChild(buildHistoryClassificationStrip(normMoves));
+        textCol.appendChild(buildHistoryAccuracyRow(normMoves));
+      } else {
+        const sumLine = `${normMoves.length} moves · Review pending`;
+        textCol.innerHTML = `
+          <span class="history-row-title">${escapeHtml(modeShortLabel(rec.mode))} · ${winnerWinsHtml(rec.winner)}</span>
+          <span class="history-row-sub">${escapeHtml(formatFinishedAt(rec.finishedAt))} · ${escapeHtml(sumLine)}</span>
+        `;
+      }
       row.appendChild(textCol);
       row.addEventListener('click', () => openReviewFromHistory(rec.id));
       listEl.appendChild(row);
