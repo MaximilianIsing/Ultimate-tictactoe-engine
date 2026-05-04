@@ -144,6 +144,59 @@
     return LABEL_TO_IDX[board] * 9 + LABEL_TO_IDX[cell];
   }
 
+  /** Bots config; edit bots.json (openingMoves use META:LOCAL like "C:C", same as opening book notation). */
+  function parseBotsPayload(data) {
+    const rows = Array.isArray(data?.bots) ? data.bots : Array.isArray(data) ? data : [];
+    return rows.map(row => ({
+      id: String(row.id || ''),
+      name: String(row.name || ''),
+      tier: String(row.tier || ''),
+      tierIcon: String(row.tierIcon || ''),
+      budgetMs: Number(row.budgetMs) || 0,
+      pickFromTop: Math.max(1, Number(row.pickFromTop) || 1),
+      avatar: String(row.avatar || ''),
+      openingMoves: Array.isArray(row.openingMoves)
+        ? row.openingMoves.map(m =>
+            typeof m === 'number' && Number.isFinite(m) ? (m | 0) : parseMoveLabel(String(m).trim()))
+        : [],
+    }));
+  }
+
+  function loadBotsSync() {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', 'bots.json', false);
+      xhr.send(null);
+      if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+        const parsed = parseBotsPayload(JSON.parse(xhr.responseText));
+        if (parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  let BOTS = loadBotsSync();
+  if (!BOTS || BOTS.length === 0) {
+    console.warn('[UTTT] bots.json missing or invalid; using fallback bot list.');
+    BOTS = parseBotsPayload({
+      bots: [
+        {
+          id: 'adrian',
+          name: 'Adrian',
+          tier: 'Hard',
+          tierIcon: 'media/difficulties/Hard.png',
+          budgetMs: 250,
+          pickFromTop: 3,
+          avatar: 'media/bots/Adrian.png',
+          openingMoves: ['BR:R', 'BL:L'],
+        },
+      ],
+    });
+  }
+
+  const BOT_MAP = {};
+  for (const b of BOTS) BOT_MAP[b.id] = b;
+
   function moveCoord(move) {
     const b = (move / 9) | 0;
     const c = move - b * 9;
@@ -226,38 +279,6 @@
     hard: 5000,
     max: 30000,
   };
-
-  function moveInt(board, cell) { return LABEL_TO_IDX[board] * 9 + LABEL_TO_IDX[cell]; }
-
-  const BOTS = [
-    { id: 'arthur', name: 'Arthur', tier: 'Very Easy', tierIcon: 'media/difficulties/Very%20Easy.png',
-      budgetMs: 0, pickFromTop: 81, avatar: 'media/bots/Arthur.png', openingMoves: [] },
-    { id: 'nico', name: 'Nico', tier: 'Easy', tierIcon: 'media/difficulties/Easy.png',
-      budgetMs: 100, pickFromTop: 5, avatar: 'media/bots/Nico.png', openingMoves: [moveInt('C','C')] },
-    { id: 'sasha', name: 'Sasha', tier: 'Easy', tierIcon: 'media/difficulties/Easy.png',
-      budgetMs: 100, pickFromTop: 5, avatar: 'media/bots/Sasha.png',
-      openingMoves: [moveInt('TL','TL'), moveInt('TR','TR'), moveInt('BR','BR'), moveInt('BL','BL')] },
-    { id: 'victor', name: 'Victor', tier: 'Medium', tierIcon: 'media/difficulties/Medium.png',
-      budgetMs: 250, pickFromTop: 3, avatar: 'media/bots/Victor.png',
-      openingMoves: [moveInt('C','T'), moveInt('C','L'), moveInt('C','R'), moveInt('C','B')] },
-    { id: 'jamie', name: 'Jamie', tier: 'Medium', tierIcon: 'media/difficulties/Medium.png',
-      budgetMs: 250, pickFromTop: 3, avatar: 'media/bots/Jamie.png',
-      openingMoves: [moveInt('BR','C'), moveInt('BL','C'), moveInt('R','R')] },
-    { id: 'sarah', name: 'Sarah', tier: 'Hard', tierIcon: 'media/difficulties/Hard.png',
-      budgetMs: 400, pickFromTop: 2, avatar: 'media/bots/Sarah.png',
-      openingMoves: [moveInt('B','T'), moveInt('T','B'), moveInt('L','R'), moveInt('R','L')] },
-    { id: 'adrian', name: 'Adrian', tier: 'Hard', tierIcon: 'media/difficulties/Hard.png',
-      budgetMs: 400, pickFromTop: 2, avatar: 'media/bots/Adrian.png',
-      openingMoves: [moveInt('BR','R'), moveInt('BL','L')] },
-    { id: 'anna', name: 'Anna', tier: 'Very Hard', tierIcon: 'media/difficulties/Very%20Hard.png',
-      budgetMs: 500, pickFromTop: 2, avatar: 'media/bots/Anna.png',
-      openingMoves: [moveInt('C','TL'), moveInt('C','T'), moveInt('C','TR'), moveInt('C','L'), moveInt('C','C'), moveInt('C','R'), moveInt('C','BL'), moveInt('C','B'), moveInt('C','BR')] },
-    { id: 'dante', name: 'Dante', tier: 'Extreme', tierIcon: 'media/difficulties/Extreme.png',
-      budgetMs: 1600, pickFromTop: 1, avatar: 'media/bots/Dante.png', openingMoves: [] },
-  ];
-
-  const BOT_MAP = {};
-  for (const b of BOTS) BOT_MAP[b.id] = b;
 
   function classifyMove(preMoveAnalysis, playedMoveInt) {
     if (!preMoveAnalysis) return null;

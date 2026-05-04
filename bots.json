@@ -1,0 +1,104 @@
+{
+  "bots": [
+    {
+      "id": "arthur",
+      "name": "Arthur",
+      "tier": "Very Easy",
+      "tierIcon": "media/difficulties/Very%20Easy.png",
+      "budgetMs": 0,
+      "pickFromTop": 81,
+      "avatar": "media/bots/Arthur.png",
+      "openingMoves": []
+    },
+    {
+      "id": "nico",
+      "name": "Nico",
+      "tier": "Easy",
+      "tierIcon": "media/difficulties/Easy.png",
+      "budgetMs": 80,
+      "pickFromTop": 7,
+      "avatar": "media/bots/Nico.png",
+      "openingMoves": ["C:C"]
+    },
+    {
+      "id": "sasha",
+      "name": "Sasha",
+      "tier": "Easy",
+      "tierIcon": "media/difficulties/Easy.png",
+      "budgetMs": 80,
+      "pickFromTop": 6,
+      "avatar": "media/bots/Sasha.png",
+      "openingMoves": ["TL:TL", "TR:TR", "BR:BR", "BL:BL"]
+    },
+    {
+      "id": "victor",
+      "name": "Victor",
+      "tier": "Medium",
+      "tierIcon": "media/difficulties/Medium.png",
+      "budgetMs": 130,
+      "pickFromTop": 5,
+      "avatar": "media/bots/Victor.png",
+      "openingMoves": ["C:T", "C:L", "C:R", "C:B"]
+    },
+    {
+      "id": "jamie",
+      "name": "Jamie",
+      "tier": "Medium",
+      "tierIcon": "media/difficulties/Medium.png",
+      "budgetMs": 130,
+      "pickFromTop": 4,
+      "avatar": "media/bots/Jamie.png",
+      "openingMoves": ["BR:C", "BL:C", "R:R"]
+    },
+    {
+      "id": "sarah",
+      "name": "Sarah",
+      "tier": "Hard",
+      "tierIcon": "media/difficulties/Hard.png",
+      "budgetMs": 250,
+      "pickFromTop": 3,
+      "avatar": "media/bots/Sarah.png",
+      "openingMoves": ["B:T", "T:B", "L:R", "R:L"]
+    },
+    {
+      "id": "adrian",
+      "name": "Adrian",
+      "tier": "Hard",
+      "tierIcon": "media/difficulties/Hard.png",
+      "budgetMs": 250,
+      "pickFromTop": 3,
+      "avatar": "media/bots/Adrian.png",
+      "openingMoves": ["BR:R", "BL:L"]
+    },
+    {
+      "id": "anna",
+      "name": "Anna",
+      "tier": "Very Hard",
+      "tierIcon": "media/difficulties/Very%20Hard.png",
+      "budgetMs": 400,
+      "pickFromTop": 2,
+      "avatar": "media/bots/Anna.png",
+      "openingMoves": [
+        "C:TL",
+        "C:T",
+        "C:TR",
+        "C:L",
+        "C:C",
+        "C:R",
+        "C:BL",
+        "C:B",
+        "C:BR"
+      ]
+    },
+    {
+      "id": "dante",
+      "name": "Dante",
+      "tier": "Extreme",
+      "tierIcon": "media/difficulties/Extreme.png",
+      "budgetMs": 1600,
+      "pickFromTop": 1,
+      "avatar": "media/bots/Dante.png",
+      "openingMoves": []
+    }
+  ]
+}
