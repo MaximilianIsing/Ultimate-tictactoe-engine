@@ -118,14 +118,31 @@ app.use(
 
 const rooms = new Map();
 
+/** Prefer 4-char codes; length 5 / 6 when many concurrent rooms (fewer collisions, easier sharing). */
+function baseRoomCodeLength() {
+  const n = rooms.size;
+  if (n >= 4000) return 6;
+  if (n >= 500) return 5;
+  return 4;
+}
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code;
-  do {
-    code = '';
-    for (let i = 0; i < 6; i++) code += chars[crypto.randomInt(chars.length)];
-  } while (rooms.has(code));
-  return code;
+  const baseLen = baseRoomCodeLength();
+
+  for (let len = baseLen; len <= 6; len++) {
+    for (let a = 0; a < 256; a++) {
+      let code = '';
+      for (let i = 0; i < len; i++) code += chars[crypto.randomInt(chars.length)];
+      if (!rooms.has(code)) return code;
+    }
+  }
+
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars[crypto.randomInt(chars.length)];
+    if (!rooms.has(code)) return code;
+  }
 }
 
 function cleanupRoom(roomId) {

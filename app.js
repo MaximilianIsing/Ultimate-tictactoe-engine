@@ -604,6 +604,25 @@
         </div>
       </div>
 
+      <h2 class="home-section-title">Jump in</h2>
+      <div class="home-hop-row">
+        <section class="home-hop-in" aria-labelledby="home-hop-in-heading">
+          <div class="home-hop-in-inner">
+            <p class="home-hop-in-title" id="home-hop-in-heading">Hop right in</p>
+            <p class="home-hop-in-lead">Have an online room code? Enter it here to join immediately.</p>
+            <div class="home-hop-in-row">
+              <input type="text" class="join-input home-hop-in-input" placeholder="Room code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code" />
+              <button type="button" class="btn-primary home-hop-in-join" disabled>Join game</button>
+            </div>
+          </div>
+        </section>
+        <div class="play-card" data-action="puzzles">
+          <div class="card-icon">${SVG_ICONS.puzzle}</div>
+          <h2>Puzzles</h2>
+          <p>Train tactics—view a position and hunt for the strongest move.</p>
+        </div>
+      </div>
+
       <div class="home-recent-anchor"></div>
 
       <h2 class="home-section-title">Start playing</h2>
@@ -664,12 +683,32 @@
       </nav>
     `;
 
+    const hopInput = page.querySelector('.home-hop-in-input');
+    const hopJoinBtn = page.querySelector('.home-hop-in-join');
+    if (hopInput && hopJoinBtn) {
+      const syncHopJoinDisabled = () => {
+        hopJoinBtn.disabled = hopInput.value.trim().length < 4;
+      };
+      syncHopJoinDisabled();
+      hopInput.addEventListener('input', syncHopJoinDisabled);
+      hopInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && hopInput.value.trim().length >= 4) {
+          navigate('#/play/online/' + hopInput.value.trim().toUpperCase());
+        }
+      });
+      hopJoinBtn.addEventListener('click', () => {
+        const code = hopInput.value.trim().toUpperCase();
+        if (code.length >= 4) navigate('#/play/online/' + code);
+      });
+    }
+
     page.querySelectorAll('[data-action]').forEach((card) => {
       card.addEventListener('click', () => {
         const action = card.dataset.action;
         if (action === 'local') navigate('#/play/local');
         else if (action === 'online') navigate('#/play/online');
         else if (action === 'ai') navigate('#/play/ai');
+        else if (action === 'puzzles') navigate('#/puzzles');
         else if (action === 'analysis') navigate('#/analysis');
         else if (action === 'openings') navigate('#/openings');
         else if (action === 'settings') navigate('#/settings');
