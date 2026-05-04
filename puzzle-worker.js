@@ -9,8 +9,9 @@ require('./engines/enginev3.js');
 
 const { UTTTState, MCTSSearcher } = self.UTTTEngineV3;
 
-const SELF_PLAY_BUDGET_MS = 300;
-const ANALYSIS_BUDGET_MS = 800;
+const SELF_PLAY_BUDGET_MS = 100;
+const ANALYSIS_BUDGET_MS = 1500;
+const MAX_CANDIDATES_PER_GAME = 5;
 const MIN_MOVES = 8;
 const MIN_BEST_WR = 0.70;
 const MIN_GAP = 0.15;
@@ -74,7 +75,10 @@ function run() {
     games++;
     const positions = playSelfPlayGame();
 
-    for (const pos of positions) {
+    const candidates = positions.length > MAX_CANDIDATES_PER_GAME
+      ? positions.sort(() => Math.random() - 0.5).slice(0, MAX_CANDIDATES_PER_GAME)
+      : positions;
+    for (const pos of candidates) {
       if (puzzles.length >= target) break;
 
       const result = analyze(pos.state, ANALYSIS_BUDGET_MS);
@@ -111,11 +115,13 @@ function run() {
     }
 
     if (games % 2 === 0) {
-      parentPort.postMessage({ type: 'progress', done: puzzles.length, target });
+      parentPort.postMessage({ type: 'progress', done: puzzles.length, target, games });
+    }
+
+    if (puzzles.length > 0) {
+      parentPort.postMessage({ type: 'puzzles', puzzles: puzzles.splice(0) });
     }
   }
-
-  parentPort.postMessage({ type: 'puzzles', puzzles });
 }
 
 run();

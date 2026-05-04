@@ -671,6 +671,7 @@
           <li>The local cell you take sends your opponent to that same position on the meta-scale for their next turn.</li>
           <li>If sent to a board already won or full, they may play anywhere open.</li>
           <li>Win three small boards in a row on the meta-board to win the game.</li>
+          <li>If all nine boards are settled with no meta three-in-a-row, the player who won more small boards wins. Equal boards = draw.</li>
         </ol>
         <p class="rules-engine">Monte Carlo Tree Search powers AI and analysis (parallel workers + tunable strength). See Help for diagrams and notation.</p>
       </details>
@@ -922,6 +923,9 @@
       'Outcome',
       [
         'Three meta-cells in a row wins. A drawn local board still claims its meta-cell and can block a meta-line.',
+        {
+          html: 'If all nine meta-cells are settled and neither side has three in a row, the player who <strong>won more small boards</strong> wins. If both players won the same number of boards, the game is a draw.',
+        },
         'Game review labels moves using an engine; adjust per-move search time under Settings.',
       ],
       null

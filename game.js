@@ -2080,15 +2080,34 @@
       }
     }
 
+    _isTiebreakWin(winner) {
+      if (winner !== 1 && winner !== 2) return false;
+      const bigMask = winner === 1 ? this.state.bigX : this.state.bigO;
+      const lines = [0b000000111, 0b000111000, 0b111000000,
+                     0b001001001, 0b010010010, 0b100100100,
+                     0b100010001, 0b001010100];
+      for (const line of lines) {
+        if ((bigMask & line) === line) return false;
+      }
+      return true;
+    }
+
     _showWinner(winner) {
       const ch = winner === 1 ? 'X' : winner === 2 ? 'O' : '-';
+      const tiebreak = this._isTiebreakWin(winner);
       if (ch === '-') {
         this.els.winnerMark.textContent = 'Tie';
       } else {
         this.els.winnerMark.innerHTML = `<img src="media/pieces/${ch}256x256.png" class="winner-piece" alt="${ch}">`;
       }
       this.els.winnerMark.dataset.mark = ch;
-      this.els.winnerText.textContent = ch === '-' ? "It's a tie!" : `Player ${ch} wins!`;
+      if (ch === '-') {
+        this.els.winnerText.textContent = "It's a tie!";
+      } else if (tiebreak) {
+        this.els.winnerText.textContent = `Player ${ch} wins by tiebreak!`;
+      } else {
+        this.els.winnerText.textContent = `Player ${ch} wins!`;
+      }
 
       this.els.winnerButtons.innerHTML = '';
       const playAgainBtn = document.createElement('button');

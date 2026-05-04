@@ -311,7 +311,7 @@ wss.on('connection', (ws) => {
 // ── Puzzle system ──
 
 const PUZZLE_BUFFER = 10;
-const INITIAL_POOL_TARGET = 500;
+const INITIAL_POOL_TARGET = 1000;
 const PUZZLES_DATA_DIR = process.env.PUZZLES_DATA_DIR
   ? path.resolve(process.env.PUZZLES_DATA_DIR)
   : path.join(__dirname, 'data');
@@ -404,16 +404,16 @@ function triggerGeneration() {
 
   worker.on('message', (msg) => {
     if (msg.type === 'progress') {
-      console.log(`[puzzles] Generation progress: ${msg.done}/${msg.target}`);
+      console.log(`[puzzles] ${msg.done}/${msg.target} puzzles found (${msg.games} games played)`);
     }
     if (msg.type === 'puzzles') {
       for (const p of msg.puzzles) {
         if (!existingIds.has(p.id)) {
           puzzlePool.push(p);
           existingIds.add(p.id);
+          console.log(`[puzzles] #${puzzlePool.length} created — best WR: ${(p.bestWinRate * 100).toFixed(1)}%, gap: ${(p.gap * 100).toFixed(1)}%, move ${p.moveCount}`);
         }
       }
-      console.log(`[puzzles] Pool now has ${puzzlePool.length} puzzles (added ${msg.puzzles.length})`);
       savePuzzlesToDisk();
     }
   });
