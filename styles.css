@@ -196,11 +196,6 @@ html[data-uttt-board-scale="compact"] .board-wrapper {
   margin-inline: auto;
 }
 
-html[data-uttt-board-scale="large"] .board-wrapper {
-  max-width: min(620px, 100%);
-  margin-inline: auto;
-}
-
 html[data-uttt-hide-last-move="1"] .cell.last-move {
   box-shadow: none !important;
 }
@@ -1387,6 +1382,14 @@ html[data-uttt-reduce-motion="1"] .connection-dot.waiting {
   align-items: center;
   gap: 8px;
   font-weight: 500;
+}
+
+.game-move-num {
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 4.25rem;
 }
 
 .turn-label {

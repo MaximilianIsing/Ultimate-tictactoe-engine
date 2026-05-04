@@ -1135,6 +1135,7 @@
         mode: 'review',
         reviewHistory: reviewHistory,
         reviewSkipAutoClassify: reviewOpts.skipAutoClassify === true,
+        reviewFastMode: getStoredReviewMode() === 'fast',
         reviewStorageRecordId: storageId,
         onReviewClassifyComplete: onReviewComplete,
         reviewInitialIndex: initIdx,
@@ -1153,9 +1154,22 @@
   }
 
   const REVIEW_CLASSIFY_BUDGET_SEC_KEY = 'uttt-review-classify-budget-sec';
+  const REVIEW_MODE_KEY = 'uttt-review-mode';
   const REVIEW_BUDGET_SEC_MIN = 0.5;
   const REVIEW_BUDGET_SEC_MAX = 5;
   const REVIEW_BUDGET_SEC_DEFAULT = 2;
+
+  function getStoredReviewMode() {
+    try {
+      const v = localStorage.getItem(REVIEW_MODE_KEY);
+      if (v === 'thorough') return 'thorough';
+    } catch { /* ignore */ }
+    return 'fast';
+  }
+
+  function setStoredReviewMode(mode) {
+    try { localStorage.setItem(REVIEW_MODE_KEY, mode); } catch { /* ignore */ }
+  }
 
   function getStoredReviewClassifyBudgetSec() {
     try {
@@ -1204,7 +1218,7 @@
     const s = defaultUiSettings();
     try {
       const bs = localStorage.getItem(UI_KEYS.boardScale);
-      if (bs === 'compact' || bs === 'large') s.boardScale = bs;
+      if (bs === 'compact') s.boardScale = bs;
       const ud = localStorage.getItem(UI_KEYS.uiDensity);
       if (ud === 'compact' || ud === 'cozy') s.uiDensity = ud;
       if (localStorage.getItem(UI_KEYS.theme) === 'light') s.theme = 'light';
@@ -1323,6 +1337,7 @@
     setActiveNav('settings');
 
     const reviewBudgetSec = getStoredReviewClassifyBudgetSec();
+    const reviewMode = getStoredReviewMode();
     const ui = loadUiSettings();
 
     const page = document.createElement('div');
@@ -1365,10 +1380,9 @@
             <span class="settings-option-title">Board size</span>
             <span class="settings-option-desc">How large the main game board appears on the board page.</span>
           </div>
-          <div class="segmented cols-3 settings-segmented">
+          <div class="segmented cols-2 settings-segmented">
             <button type="button" class="seg-btn${ui.boardScale === 'compact' ? ' is-active' : ''}" data-set-board-scale="compact">Compact</button>
             <button type="button" class="seg-btn${ui.boardScale === 'default' ? ' is-active' : ''}" data-set-board-scale="default">Default</button>
-            <button type="button" class="seg-btn${ui.boardScale === 'large' ? ' is-active' : ''}" data-set-board-scale="large">Large</button>
           </div>
         </div>
       </div>
@@ -1419,11 +1433,23 @@
 
       <div class="settings-section">
         <h3 class="settings-section-title">Game review</h3>
-        <p class="settings-hint">When you open a finished game in review, the app runs a quick engine search on every move to label quality (brilliant, inaccuracy, etc.). This control sets how many <strong>seconds</strong> the engine may think per move for that pass. More time usually means stabler labels; lower values finish faster.</p>
-        <div class="settings-option settings-review-budget">
+        <p class="settings-hint">Controls how the engine classifies each move when you open a finished game in review.</p>
+
+        <div class="settings-option">
           <div class="settings-option-header">
-            <span class="settings-option-title">Time per move when classifying review</span>
-            <span class="settings-option-desc">Applies the next time review classifies moves (re-open review or start a new review).</span>
+            <span class="settings-option-title">Review mode</span>
+            <span class="settings-option-desc">Fast analyzes many moves in parallel with early stopping. Thorough spends a fixed budget per move using all workers together.</span>
+          </div>
+          <div class="segmented cols-2 settings-segmented" id="review-mode-seg">
+            <button type="button" class="seg-btn${reviewMode === 'fast' ? ' is-active' : ''}" data-review-mode="fast">Fast</button>
+            <button type="button" class="seg-btn${reviewMode === 'thorough' ? ' is-active' : ''}" data-review-mode="thorough">Thorough</button>
+          </div>
+        </div>
+
+        <div class="settings-option settings-review-budget" id="review-budget-section" style="${reviewMode === 'fast' ? 'display:none' : ''}">
+          <div class="settings-option-header">
+            <span class="settings-option-title">Time per move</span>
+            <span class="settings-option-desc">Seconds the engine thinks per move. More time means stabler labels.</span>
           </div>
           <div class="settings-range-row">
             <input type="range" class="settings-range" id="review-classify-budget" min="0.5" max="5" step="0.5" value="${reviewBudgetSec}" aria-valuemin="0.5" aria-valuemax="5" aria-describedby="review-classify-budget-hint" />
@@ -1437,6 +1463,20 @@
     page.querySelector('.back-btn').addEventListener('click', () => navigate('#/'));
 
     bindUiSettingsControls(page);
+
+    const modeSeg = page.querySelector('#review-mode-seg');
+    const budgetSection = page.querySelector('#review-budget-section');
+    if (modeSeg) {
+      for (const btn of modeSeg.querySelectorAll('.seg-btn')) {
+        btn.addEventListener('click', () => {
+          for (const b of modeSeg.querySelectorAll('.seg-btn')) b.classList.remove('is-active');
+          btn.classList.add('is-active');
+          const mode = btn.dataset.reviewMode;
+          setStoredReviewMode(mode);
+          if (budgetSection) budgetSection.style.display = mode === 'fast' ? 'none' : '';
+        });
+      }
+    }
 
     const range = page.querySelector('#review-classify-budget');
     const rangeVal = page.querySelector('#review-classify-budget-value');

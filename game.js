@@ -111,6 +111,12 @@
     };
   }
 
+  /** Skip auto-classify only when real top lines exist (book/classified moves must still run MCTS). */
+  function reviewEntryHasEngineLines(entry) {
+    const a = entry && entry._analysis;
+    return !!(a && Array.isArray(a.topMoves) && a.topMoves.length > 0);
+  }
+
   const TIME_CONTROL_PRESETS = {
     bullet: { id: 'bullet', msPerSide: 120000, label: 'Bullet', desc: '2 min each' },
     blitz: { id: 'blitz', msPerSide: 300000, label: 'Blitz', desc: '5 min each' },
@@ -144,6 +150,24 @@
     return `${IDX_TO_LABEL[b]} \u00B7 ${IDX_TO_LABEL[c]}`;
   }
 
+  const FIRST_MOVE_ANALYSIS = {
+    bestMove: 40,
+    evaluation: 0.15,
+    forPlayer: 1,
+    done: true,
+    simulations: 17760000,
+    elapsedMs: 34500,
+    parallelWorkers: 4,
+    legalMoveCount: 81,
+    topMoves: [
+      { move: 40, visits: 17360000, winRate: 0.575 },
+      { move: 42, visits: 15400,    winRate: 0.553 },
+      { move: 37, visits: 14600,    winRate: 0.564 },
+      { move: 38, visits: 12900,    winRate: 0.558 },
+      { move: 44, visits: 12100,    winRate: 0.558 },
+    ],
+  };
+
   let bookLines = [];
   let bookLoaded = false;
 
@@ -176,7 +200,7 @@
       for (let i = 0; i < seq.length; i++) {
         if (seq[i] !== line.moves[i]) { ok = false; break; }
       }
-      if (ok && (!bestMatch || line.moves.length >= bestMatch.moves.length)) {
+      if (ok && (!bestMatch || line.moves.length < bestMatch.moves.length)) {
         bestMatch = line;
       }
     }
@@ -187,6 +211,7 @@
     brilliant: 'media/classifications/Brilliant.png',
     great: 'media/classifications/Great.png',
     best: 'media/classifications/Best.png',
+    forced: 'media/classifications/Forced.png',
     okay: 'media/classifications/Okay.png',
     miss: 'media/classifications/Miss.png',
     inaccuracy: 'media/classifications/Inaccuracy.png',
@@ -204,7 +229,7 @@
 
   function classifyMove(preMoveAnalysis, playedMoveInt) {
     if (!preMoveAnalysis) return null;
-    if (preMoveAnalysis.forced) return null;
+    if (preMoveAnalysis.forced) return 'forced';
     const top = preMoveAnalysis.topMoves;
     if (!top || top.length < 2) return null;
     const totalVisits = top.reduce((s, m) => s + (m.visits || 0), 0);
@@ -266,6 +291,7 @@
       this.onReviewClassifyComplete = options.onReviewClassifyComplete || null;
       this.reviewStorageRecordId = options.reviewStorageRecordId != null ? options.reviewStorageRecordId : null;
       this.reviewSkipAutoClassify = options.reviewSkipAutoClassify === true;
+      this.reviewFastMode = options.reviewFastMode !== false;
       this.reviewMoveHistory = options.reviewHistory || null;
       this.reviewInitialIndex = options.reviewInitialIndex != null ? options.reviewInitialIndex | 0 : 0;
       this.onReviewPersist = typeof options.onReviewPersist === 'function' ? options.onReviewPersist : null;
@@ -370,6 +396,7 @@
           </div>
           <div class="game-status-main">
             <div class="turn-indicator">
+              <span class="game-move-num" aria-live="polite"></span>
               <span class="turn-label">Turn:</span>
               <span class="turn-mark" data-mark="X">X</span>
             </div>
@@ -406,6 +433,7 @@
         clockPresetIcon: boardCol.querySelector('.clock-preset-icon'),
         clockPresetDetails: boardCol.querySelector('.clock-preset-details'),
         turnMark: boardCol.querySelector('.turn-mark'),
+        moveNumEl: boardCol.querySelector('.game-move-num'),
         bookLabel: boardCol.querySelector('.book-label'),
         undoBtn: boardCol.querySelector('.btn-undo'),
         resetBtn: boardCol.querySelector('.btn-reset'),
@@ -669,7 +697,102 @@
 
     _onWorkerMessageParallel(e) {
       const msg = e.data;
-      if (!msg || msg.requestId !== this.analysisRequestId || this.destroyed) return;
+      if (!msg || this.destroyed) return;
+
+      // Fast pipeline: worker pairs per move
+      if (this.mode === 'review' && this._isAutoClassify && this.reviewFastMode && this._workerMoveMap && this._workerMoveMap.size > 0) {
+        if (msg.requestId !== this.analysisRequestId) return;
+        if (msg.type === 'progress') {
+          if (this._isAutoClassifyLive && this._workerMoveMap.get(msg.workerIndex) === this.reviewIndex) {
+            this.currentAnalysis = msg.result;
+            this._renderAnalysis(false);
+          }
+          return;
+        }
+        if (msg.type === 'result') {
+          this._onPipelineWorkerResult(msg.workerIndex, msg.result);
+        }
+        return;
+      }
+
+      // Thorough mode: all workers on one move — merge and advance
+      if (this.mode === 'review' && this._isAutoClassify && !this.reviewFastMode) {
+        if (msg.requestId !== this.analysisRequestId) return;
+        const poolLen = this._parallelProgress.length;
+        if (poolLen === 0 || msg.workerIndex < 0 || msg.workerIndex >= poolLen) return;
+
+        if (msg.type === 'progress') {
+          this._parallelProgress[msg.workerIndex] = msg.result;
+          if (this._isAutoClassifyLive) {
+            const merged = mergeParallelProgress(this._parallelProgress);
+            if (merged) {
+              this.currentAnalysis = merged;
+              this._renderAnalysis(false);
+            }
+          }
+          return;
+        }
+        if (msg.type === 'result') {
+          this._parallelFinal[msg.workerIndex] = msg.result;
+          for (let i = 0; i < poolLen; i++) {
+            if (!this._parallelFinal[i]) return;
+          }
+          const merged = mergeParallelMCTSResults(this._parallelFinal.slice());
+          this._parallelProgress = [];
+          this._parallelFinal = [];
+          if (this._isAutoClassifyLive) {
+            this.currentAnalysis = merged;
+            this._renderAnalysis(true);
+          }
+          this._onThoroughResult(merged);
+          return;
+        }
+        return;
+      }
+
+      // Deep analysis after classification
+      if (this.mode === 'review' && this._reviewDeepIdx != null) {
+        if (msg.requestId !== this.analysisRequestId) return;
+        const poolLen = this._parallelProgress.length;
+        if (poolLen === 0 || msg.workerIndex < 0 || msg.workerIndex >= poolLen) return;
+        const baseSims = this._reviewDeepBaseSims || 0;
+
+        if (msg.type === 'progress') {
+          this._parallelProgress[msg.workerIndex] = msg.result;
+          const merged = mergeParallelProgress(this._parallelProgress);
+          if (merged && (merged.simulations || 0) > baseSims) {
+            this.currentAnalysis = merged;
+            this._renderAnalysis(false);
+            this._setEngineStatus('Deep analysis\u2026', formatStats(merged));
+          }
+          return;
+        }
+        if (msg.type === 'result') {
+          this._parallelFinal[msg.workerIndex] = msg.result;
+          for (let i = 0; i < poolLen; i++) {
+            if (!this._parallelFinal[i]) return;
+          }
+          const merged = mergeParallelMCTSResults(this._parallelFinal.slice());
+          this._parallelProgress = [];
+          this._parallelFinal = [];
+          if (merged && (merged.simulations || 0) > baseSims) {
+            this.currentAnalysis = merged;
+            this._renderAnalysis(true);
+            const idx = this._reviewDeepIdx;
+            const entry = this.reviewMoveHistory[idx];
+            const mark = entry ? (entry.player === 1 ? 'X' : 'O') : '';
+            const cls = entry && entry.classification
+              ? entry.classification.charAt(0).toUpperCase() + entry.classification.slice(1) : '';
+            const moveLabel = cls ? `Move ${idx + 1}: ${mark} ${cls}` : `Move ${idx + 1}`;
+            this._setEngineStatus(moveLabel, formatStats(merged));
+          }
+          this._reviewDeepIdx = null;
+          return;
+        }
+        return;
+      }
+
+      if (msg.requestId !== this.analysisRequestId) return;
       const poolLen = this._parallelProgress.length;
       if (poolLen === 0 || msg.workerIndex < 0 || msg.workerIndex >= poolLen) return;
 
@@ -1313,15 +1436,7 @@
     }
 
     _onAnalysisComplete(result) {
-      if (this.mode === 'review' && this.reviewMoveHistory) {
-        if (this._isAutoClassify && this._autoClassifyIdx >= 0) {
-          this._classifyAtIndex(this._autoClassifyIdx, result);
-          if (this._autoClassifyIdx === this.reviewIndex) {
-            this._showCachedReviewAnalysis();
-          }
-          this._autoClassifyIdx++;
-          this._advanceAutoClassify();
-        }
+      if (this.mode === 'review' && this.reviewMoveHistory && this._isAutoClassify) {
         return;
       }
 
@@ -1500,6 +1615,17 @@
       this.els.turnMark.dataset.mark = turnChar;
       this.els.turnMark.innerHTML = `<img src="media/pieces/${turnChar}256x256.png" class="turn-piece" alt="${turnChar}">`;
 
+      if (this.els.moveNumEl) {
+        if (this.mode === 'review') {
+          this.els.moveNumEl.textContent = '';
+          this.els.moveNumEl.hidden = true;
+        } else {
+          this.els.moveNumEl.hidden = false;
+          const n = this.state.winner === 0 ? this.state.moveCount + 1 : this.state.moveCount;
+          this.els.moveNumEl.textContent = `Move ${n}`;
+        }
+      }
+
       for (let b = 0; b < 9; b++) {
         const small = this.smallEls[b];
         const winState = this.state.bigState[b];
@@ -1654,9 +1780,12 @@
       const label = section.querySelector('.classify-progress-label');
       const fill = section.querySelector('.classify-progress-bar-fill');
       const total = this.reviewMoveHistory ? this.reviewMoveHistory.length : 0;
-      if (this._autoClassifyIdx >= 0 && total > 0) {
+      if (!this._classifyFinished && this._classifyStarted && total > 0) {
         section.style.display = '';
-        const done = this._autoClassifyIdx;
+        let done = 0;
+        for (let i = 0; i < total; i++) {
+          if (reviewEntryHasEngineLines(this.reviewMoveHistory[i]) || this.reviewMoveHistory[i].classification) done++;
+        }
         label.textContent = `Classifying moves\u2026 ${done}/${total}`;
         fill.style.width = (done / total * 100) + '%';
       } else {
@@ -1968,19 +2097,6 @@
 
     // ── Review mode ──
 
-    _ensureReviewEntryAnalysisStub(entry) {
-      if (entry._analysis || !entry.classification) return;
-      entry._analysis = {
-        evaluation: 0,
-        forPlayer: entry.player != null ? entry.player : 1,
-        done: true,
-        restored: true,
-        topMoves: [],
-        simulations: 0,
-        elapsedMs: 0,
-      };
-    }
-
     _initReview() {
       this.reviewIndex = -1;
       this._autoClassifyIdx = -1;
@@ -1989,12 +2105,6 @@
       this._isAutoClassify = false;
       this._isAutoClassifyLive = false;
       this._reviewCompleteCallbackDone = false;
-
-      if (this.reviewMoveHistory) {
-        for (const e of this.reviewMoveHistory) {
-          if (e.classification && !e._analysis) this._ensureReviewEntryAnalysisStub(e);
-        }
-      }
 
       const wantIdx = Math.max(0, Math.min(this.reviewInitialIndex | 0,
         this.reviewMoveHistory ? this.reviewMoveHistory.length : 0));
@@ -2053,52 +2163,190 @@
     }
 
     _startReviewAutoClassify() {
-      this._autoClassifyIdx = 0;
       this._classifyStarted = true;
-      this._advanceAutoClassify();
-    }
+      this._isAutoClassify = true;
+      this._classifyQueue = [];
+      this._classifyHighWater = 0;
+      this._workerMoveMap = new Map();
 
-    _advanceAutoClassify() {
-      if (!this.reviewMoveHistory || this._autoClassifyIdx < 0) return;
-      while (this._autoClassifyIdx < this.reviewMoveHistory.length) {
-        const entry = this.reviewMoveHistory[this._autoClassifyIdx];
-        if (entry._analysis) { this._autoClassifyIdx++; continue; }
-        break;
+      const Ctor = stateCtor('v3');
+      const st = new Ctor();
+      this._precomputedStates = [];
+      for (let i = 0; i < this.reviewMoveHistory.length; i++) {
+        this._precomputedStates.push(st.serialize());
+        const e = this.reviewMoveHistory[i];
+        st.applyMove(e.boardIdx * 9 + e.cellIdx);
       }
-      if (this._autoClassifyIdx >= this.reviewMoveHistory.length) {
-        this._autoClassifyIdx = -1;
-        this._isAutoClassify = false;
-        this._isAutoClassifyLive = false;
-        this._classifyFinished = true;
-        this._updateClassifyProgress();
-        this._showReviewSummary();
-        this._showCachedReviewAnalysis();
-        this._fireReviewCompleteCallbackIfNeeded();
+
+      for (let i = 0; i < this.reviewMoveHistory.length; i++) {
+        const entry = this.reviewMoveHistory[i];
+        if (reviewEntryHasEngineLines(entry)) continue;
+
+        const pre = this._precomputedStates[i];
+        const tmpSt = Ctor.deserialize(pre);
+        const legal = tmpSt.legalMoves();
+        if (tmpSt.winner !== 0 || legal.length === 0) continue;
+
+        if (i === 0 && tmpSt.moveCount === 0) {
+          this._classifyAtIndex(i, FIRST_MOVE_ANALYSIS);
+          continue;
+        }
+
+        if (legal.length === 1) {
+          const forced = {
+            bestMove: legal[0],
+            topMoves: [{ move: legal[0], visits: 1, winRate: 0.5 }],
+            evaluation: 0, forced: true, legalMoveCount: 1,
+            simulations: 0, elapsedMs: 0, forPlayer: tmpSt.toMove, done: true,
+          };
+          this._classifyAtIndex(i, forced);
+          continue;
+        }
+
+        this._classifyQueue.push(i);
+      }
+
+      if (this._classifyQueue.length === 0) {
+        this._finishAutoClassify();
         return;
       }
-      this._runAutoClassifyAt(this._autoClassifyIdx);
+
+      this._classifyQueuePtr = 0;
+
+      if (this.reviewFastMode) {
+        this._pipelineDispatchBatch();
+      } else {
+        this._thoroughDispatchNext();
+      }
     }
 
-    _runAutoClassifyAt(idx) {
-      const Ctor = stateCtor('v3');
-      const tmpState = new Ctor();
-      for (let i = 0; i < idx; i++) {
-        const e = this.reviewMoveHistory[i];
-        tmpState.applyMove(e.boardIdx * 9 + e.cellIdx);
-      }
+    // ── Fast mode: worker pairs per move, parallel pipeline ──
 
-      this._isAutoClassify = true;
-      this.analysisRequestId++;
+    _pipelineDispatchBatch() {
       const pool = this.workersV3;
       if (pool.length === 0) return;
+      this.analysisRequestId++;
+      this._pipelinePairSize = Math.max(1, Math.min(2, pool.length));
+      this._pipelinePairResults = new Map();
+
+      const pairCount = Math.floor(pool.length / this._pipelinePairSize);
+      for (let p = 0; p < pairCount; p++) {
+        this._dispatchNextPair(p);
+      }
+    }
+
+    _dispatchNextPair(pairIdx) {
+      const pool = this.workersV3;
+      const ps = this._pipelinePairSize;
+      const baseW = pairIdx * ps;
+      if (baseW >= pool.length) return;
+
+      while (this._classifyQueuePtr < this._classifyQueue.length) {
+        const moveIdx = this._classifyQueue[this._classifyQueuePtr];
+        this._classifyQueuePtr++;
+
+        if (reviewEntryHasEngineLines(this.reviewMoveHistory[moveIdx])) continue;
+
+        const budgetMs = getReviewClassifyBudgetMs();
+        const seedBase = (Date.now() ^ (Math.random() * 0x100000000)) >>> 0;
+        const maxNodesPerWorker = Math.floor(500000 / Math.max(ps, 1));
+
+        for (let j = 0; j < ps && baseW + j < pool.length; j++) {
+          const wIdx = baseW + j;
+          this._workerMoveMap.set(wIdx, moveIdx);
+          pool[wIdx].postMessage({
+            type: 'analyze',
+            requestId: this.analysisRequestId,
+            state: this._precomputedStates[moveIdx],
+            budgetMs,
+            workerIndex: wIdx,
+            rngSeed: (seedBase + Math.imul(wIdx, 0x9e3779b1)) >>> 0,
+            rolloutCap: 52,
+            maxNodes: maxNodesPerWorker,
+            earlyStop: true,
+          });
+        }
+
+        this._pipelinePairResults.set(pairIdx, []);
+        if (moveIdx >= this._classifyHighWater) this._classifyHighWater = moveIdx + 1;
+        this._autoClassifyIdx = this._classifyHighWater;
+        this._isAutoClassifyLive = (moveIdx === this.reviewIndex);
+        this._updateClassifyProgress();
+        return;
+      }
+
+      for (let j = 0; j < ps && baseW + j < pool.length; j++) {
+        this._workerMoveMap.delete(baseW + j);
+      }
+      this._pipelinePairResults.delete(pairIdx);
+    }
+
+    _onPipelineWorkerResult(workerIdx, result) {
+      const moveIdx = this._workerMoveMap.get(workerIdx);
+      if (moveIdx == null) return;
+
+      const ps = this._pipelinePairSize;
+      const pairIdx = Math.floor(workerIdx / ps);
+      const pairResults = this._pipelinePairResults.get(pairIdx);
+      if (!pairResults) return;
+
+      pairResults.push(result);
+
+      if (pairResults.length < ps) {
+        const baseW = pairIdx * ps;
+        let allSameMove = true;
+        for (let j = 0; j < ps && baseW + j < this.workersV3.length; j++) {
+          if (this._workerMoveMap.get(baseW + j) !== moveIdx) { allSameMove = false; break; }
+        }
+        if (allSameMove) return;
+      }
+
+      const merged = pairResults.length > 1 ? mergeParallelMCTSResults(pairResults) : pairResults[0];
+
+      const baseW = pairIdx * ps;
+      for (let j = 0; j < ps && baseW + j < this.workersV3.length; j++) {
+        this._workerMoveMap.delete(baseW + j);
+      }
+      this._pipelinePairResults.delete(pairIdx);
+
+      this._classifyAtIndex(moveIdx, merged);
+      if (moveIdx === this.reviewIndex) {
+        this._showCachedReviewAnalysis();
+      }
+
+      this._dispatchNextPair(pairIdx);
+
+      let anyActive = false;
+      for (const v of this._workerMoveMap.values()) { anyActive = true; break; }
+      if (!anyActive) {
+        this._finishAutoClassify();
+      }
+    }
+
+    // ── Thorough mode: all workers on one move at a time, sequential ──
+
+    _thoroughDispatchNext() {
+      if (!this.reviewMoveHistory || this._classifyQueuePtr >= this._classifyQueue.length) {
+        this._finishAutoClassify();
+        return;
+      }
+
+      const moveIdx = this._classifyQueue[this._classifyQueuePtr];
+      this._autoClassifyIdx = moveIdx;
+      this._isAutoClassify = true;
+      this.analysisRequestId++;
+
+      const pool = this.workersV3;
+      if (pool.length === 0) return;
+
+      this._parallelProgress = new Array(pool.length);
+      this._parallelFinal = new Array(pool.length);
       const payload = {
         type: 'analyze',
         requestId: this.analysisRequestId,
-        state: tmpState.serialize(),
+        state: this._precomputedStates[moveIdx],
         budgetMs: getReviewClassifyBudgetMs(),
       };
-      this._parallelProgress = new Array(pool.length);
-      this._parallelFinal = new Array(pool.length);
       const seedBase = (Date.now() ^ (Math.random() * 0x100000000)) >>> 0;
       const maxNodesPerWorker = Math.floor(500000 / Math.max(pool.length, 1));
       for (let i = 0; i < pool.length; i++) {
@@ -2111,18 +2359,96 @@
         });
       }
       this._updateClassifyProgress();
+      this._isAutoClassifyLive = (moveIdx === this.reviewIndex);
+    }
 
-      if (idx === this.reviewIndex) {
-        this._isAutoClassifyLive = true;
-      } else {
-        this._isAutoClassifyLive = false;
+    _onThoroughResult(merged) {
+      const moveIdx = this._classifyQueue[this._classifyQueuePtr];
+      this._classifyQueuePtr++;
+
+      this._classifyAtIndex(moveIdx, merged);
+      if (moveIdx === this.reviewIndex) {
+        this._showCachedReviewAnalysis();
       }
+      this._thoroughDispatchNext();
+    }
+
+    _finishAutoClassify() {
+      this._autoClassifyIdx = -1;
+      this._isAutoClassify = false;
+      this._isAutoClassifyLive = false;
+      this._classifyFinished = true;
+      this._precomputedStates = null;
+      this._classifyQueue = null;
+      this._workerMoveMap = null;
+      this._pipelinePairResults = null;
+      this._pipelinePairSize = 0;
+      this._updateClassifyProgress();
+      this._showReviewSummary();
+      this._showCachedReviewAnalysis();
+      this._fireReviewCompleteCallbackIfNeeded();
+      this._startReviewDeepAnalysis();
+    }
+
+    _startReviewDeepAnalysis() {
+      if (this.mode !== 'review' || !this._classifyFinished) return;
+      if (this.state.winner !== 0) return;
+      const idx = this.reviewIndex;
+      if (idx >= this.reviewMoveHistory.length) return;
+
+      this._reviewDeepIdx = idx;
+      const entry = this.reviewMoveHistory[idx];
+      this._reviewDeepBaseSims = (entry._analysis && entry._analysis.simulations) || 0;
+
+      this._isAutoClassify = false;
+      this.analysisRequestId++;
+      const pool = this.workersV3;
+      if (pool.length === 0) return;
+
+      this._parallelProgress = new Array(pool.length);
+      this._parallelFinal = new Array(pool.length);
+      const payload = {
+        type: 'analyze',
+        requestId: this.analysisRequestId,
+        state: this.state.serialize(),
+        budgetMs: 10000,
+      };
+      const seedBase = (Date.now() ^ (Math.random() * 0x100000000)) >>> 0;
+      const maxNodesPerWorker = Math.floor(500000 / Math.max(pool.length, 1));
+      for (let i = 0; i < pool.length; i++) {
+        pool[i].postMessage({
+          ...payload,
+          workerIndex: i,
+          rngSeed: (seedBase + Math.imul(i, 0x9e3779b1)) >>> 0,
+          rolloutCap: 52,
+          maxNodes: maxNodesPerWorker,
+        });
+      }
+    }
+
+    _abortReviewDeepAnalysis() {
+      if (this._reviewDeepIdx == null) return;
+      this._reviewDeepIdx = null;
+      this._reviewDeepBaseSims = 0;
+      this.analysisRequestId++;
+      this._parallelProgress = [];
+      this._parallelFinal = [];
+      for (const w of this.workersV3) {
+        w.postMessage({ type: 'abort' });
+      }
+    }
+
+    _advanceAutoClassify() {
+      // kept for compatibility — pipeline drives itself via _onPipelineWorkerResult
+    }
+
+    _runAutoClassifyAt(_idx) {
+      // kept for compatibility — pipeline drives itself
     }
 
     _reviewClassifiedMax() {
       if (!this.reviewMoveHistory) return 0;
-      if (this._autoClassifyIdx < 0) return this.reviewMoveHistory.length;
-      return this._autoClassifyIdx;
+      return this.reviewMoveHistory.length;
     }
 
     _reviewGoTo(idx) {
@@ -2131,12 +2457,26 @@
       if (idx === this.reviewIndex) return;
       this.reviewIndex = idx;
       if (this._isAutoClassify) {
-        this._isAutoClassifyLive = (this._autoClassifyIdx === idx);
+        if (this.reviewFastMode && this._workerMoveMap) {
+          let liveNow = false;
+          for (const mi of this._workerMoveMap.values()) {
+            if (mi === idx) { liveNow = true; break; }
+          }
+          this._isAutoClassifyLive = liveNow;
+        } else if (!this.reviewFastMode) {
+          this._isAutoClassifyLive = (this._autoClassifyIdx === idx);
+        }
+      }
+      if (this._reviewDeepIdx != null) {
+        this._abortReviewDeepAnalysis();
       }
       this._replayToIndex(idx);
       this.render();
       this._updateReviewUI();
       this._showCachedReviewAnalysis();
+      if (this._classifyFinished) {
+        this._startReviewDeepAnalysis();
+      }
       if (this.onReviewPersist && this.reviewMoveHistory && !this.reviewSkipAutoClassify) {
         try {
           this.onReviewPersist(this.reviewIndex, this.reviewMoveHistory, false);
@@ -2283,7 +2623,7 @@
       }
 
       summarySection.style.display = '';
-      const order = ['brilliant', 'great', 'best', 'book', 'okay', 'miss', 'inaccuracy', 'mistake', 'blunder'];
+      const order = ['brilliant', 'great', 'best', 'book', 'forced', 'okay', 'miss', 'inaccuracy', 'mistake', 'blunder'];
       const classifyDone = this._classifyFinished;
 
       const accuracyWeights = { brilliant: 1, great: 1, best: 1, book: 1, okay: 0.6, miss: 0.4, inaccuracy: 0.2, mistake: 0.1, blunder: 0 };
@@ -2329,6 +2669,7 @@
     destroy() {
       this.destroyed = true;
       this._stopClockLoop();
+      this._reviewDeepIdx = null;
       this._abortAnalysis();
       if (this.worker) {
         this.worker.terminate();
