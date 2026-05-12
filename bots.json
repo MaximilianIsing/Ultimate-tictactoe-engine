@@ -7,6 +7,8 @@
       "tierIcon": "media/difficulties/Very%20Easy.png",
       "budgetMs": 0,
       "pickFromTop": 81,
+      "blunderChance": 0.25,
+      "uniformPick": true,
       "avatar": "media/bots/Arthur.png",
       "openingMoves": []
     },
@@ -15,8 +17,10 @@
       "name": "Nico",
       "tier": "Easy",
       "tierIcon": "media/difficulties/Easy.png",
-      "budgetMs": 80,
-      "pickFromTop": 7,
+      "budgetMs": 40,
+      "pickFromTop": 10,
+      "blunderChance": 0.2,
+      "uniformPick": true,
       "avatar": "media/bots/Nico.png",
       "openingMoves": ["C:C"]
     },
@@ -25,8 +29,10 @@
       "name": "Sasha",
       "tier": "Easy",
       "tierIcon": "media/difficulties/Easy.png",
-      "budgetMs": 80,
-      "pickFromTop": 6,
+      "budgetMs": 50,
+      "pickFromTop": 8,
+      "blunderChance": 0.12,
+      "uniformPick": true,
       "avatar": "media/bots/Sasha.png",
       "openingMoves": ["TL:TL", "TR:TR", "BR:BR", "BL:BL"]
     },
@@ -37,6 +43,7 @@
       "tierIcon": "media/difficulties/Medium.png",
       "budgetMs": 130,
       "pickFromTop": 5,
+      "blunderChance": 0.04,
       "avatar": "media/bots/Victor.png",
       "openingMoves": ["C:T", "C:L", "C:R", "C:B"]
     },
@@ -47,6 +54,7 @@
       "tierIcon": "media/difficulties/Medium.png",
       "budgetMs": 130,
       "pickFromTop": 4,
+      "blunderChance": 0.07,
       "avatar": "media/bots/Jamie.png",
       "openingMoves": ["BR:C", "BL:C", "R:R"]
     },
@@ -55,8 +63,9 @@
       "name": "Sarah",
       "tier": "Hard",
       "tierIcon": "media/difficulties/Hard.png",
-      "budgetMs": 250,
+      "budgetMs": 190,
       "pickFromTop": 3,
+      "blunderChance": 0.03,
       "avatar": "media/bots/Sarah.png",
       "openingMoves": ["B:T", "T:B", "L:R", "R:L"]
     },
@@ -65,8 +74,9 @@
       "name": "Adrian",
       "tier": "Hard",
       "tierIcon": "media/difficulties/Hard.png",
-      "budgetMs": 250,
+      "budgetMs": 160,
       "pickFromTop": 3,
+      "blunderChance": 0.03,
       "avatar": "media/bots/Adrian.png",
       "openingMoves": ["BR:R", "BL:L"]
     },
@@ -76,7 +86,8 @@
       "tier": "Very Hard",
       "tierIcon": "media/difficulties/Very%20Hard.png",
       "budgetMs": 400,
-      "pickFromTop": 2,
+      "pickFromTop": 3,
+      "blunderChance": 0.01,
       "avatar": "media/bots/Anna.png",
       "openingMoves": [
         "C:TL",
@@ -97,6 +108,7 @@
       "tierIcon": "media/difficulties/Extreme.png",
       "budgetMs": 1600,
       "pickFromTop": 1,
+      "blunderChance": 0,
       "avatar": "media/bots/Dante.png",
       "openingMoves": []
     }

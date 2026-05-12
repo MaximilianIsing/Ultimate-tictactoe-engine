@@ -154,6 +154,8 @@
       tierIcon: String(row.tierIcon || ''),
       budgetMs: Number(row.budgetMs) || 0,
       pickFromTop: Math.max(1, Number(row.pickFromTop) || 1),
+      blunderChance: Number(row.blunderChance) || 0,
+      uniformPick: !!row.uniformPick,
       avatar: String(row.avatar || ''),
       openingMoves: Array.isArray(row.openingMoves)
         ? row.openingMoves.map(m =>
@@ -1578,7 +1580,20 @@
       if (!bot || bot.pickFromTop <= 1) return result.bestMove;
       const top = result.topMoves;
       if (!top || top.length <= 1) return result.bestMove;
+
+      // Blunder: pick a completely random legal move from the full list
+      if (bot.blunderChance && Math.random() < bot.blunderChance) {
+        const allMoves = top.length > 0 ? top : [{ move: result.bestMove }];
+        return allMoves[Math.floor(Math.random() * allMoves.length)].move;
+      }
+
       const candidates = top.slice(0, Math.min(bot.pickFromTop, top.length));
+
+      // Uniform weighting: pick equally among top-N (ignores visit counts)
+      if (bot.uniformPick) {
+        return candidates[Math.floor(Math.random() * candidates.length)].move;
+      }
+
       const totalVisits = candidates.reduce((s, m) => s + (m.visits || 0), 0);
       if (totalVisits <= 0) return result.bestMove;
       const r = Math.random() * totalVisits;

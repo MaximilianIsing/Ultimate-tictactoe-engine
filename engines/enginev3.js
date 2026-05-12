@@ -406,7 +406,17 @@
     }
   }
 
-  // PUCT selection: Q + c * P * sqrt(N_parent) / (1 + N_child)
+  // PUCT selection with FPU reduction and visit-share exploration.
+  //
+  // Standard PUCT's exploration decays to zero at high visit counts, causing
+  // 96%+ concentration on the top move even when alternatives are close in Q.
+  // We replace the vanishing exploration with a term based on how far each
+  // child's visit share is from its "fair share" (prior-weighted). This term
+  // never dies — it keeps pulling under-visited children until their share
+  // matches their prior proportion, no matter the total sim count.
+  const FPU_REDUCTION = 0.25;
+  const SHARE_EXPLORE_C = 0.12;
+
   function puctSelect(node, c) {
     const children = node.children;
     const nch = children.length;
@@ -414,7 +424,12 @@
 
     let best = children[0];
     let bestScore = -Infinity;
-    const sqrtParent = fastSqrt(Math.max(1, node.visits));
+    const parentVisits = Math.max(1, node.visits);
+    const sqrtParent = fastSqrt(parentVisits);
+
+    // Parent's mean Q used for FPU baseline
+    const parentQ = node.visits > 0 ? node.wins / node.visits : 0.5;
+    const fpuValue = Math.max(0.05, parentQ - FPU_REDUCTION);
 
     // Sum priors for normalization
     let sumP = 0;
@@ -423,10 +438,24 @@
 
     for (let i = 0; i < nch; i++) {
       const ch = children[i];
-      const q = ch.visits > 0 ? ch.wins / ch.visits : 0.5;
+      const q = ch.visits > 0 ? ch.wins / ch.visits : fpuValue;
       const p = ch.prior / sumP;
-      const explore = c * p * sqrtParent / (1 + ch.visits);
-      const score = q + explore;
+
+      // Standard PUCT exploration term (dominant early)
+      const puctExplore = c * p * sqrtParent / (1 + ch.visits);
+
+      // Visit-share exploration: measures how much this child is under-visited
+      // relative to its prior. targetShare is what the child "deserves" based on
+      // prior; actualShare is what it has. The gap drives ongoing exploration.
+      // This term is O(1) — it doesn't decay with visit count.
+      const actualShare = ch.visits / parentVisits;
+      const targetShare = p;
+      let shareExplore = 0;
+      if (targetShare > actualShare) {
+        shareExplore = SHARE_EXPLORE_C * (targetShare - actualShare) / targetShare;
+      }
+
+      const score = q + puctExplore + shareExplore;
       if (score > bestScore) {
         bestScore = score;
         best = ch;
@@ -537,7 +566,7 @@
           const move = node.untried[idx];
           node.untried[idx] = node.untried[node.untried.length - 1];
           node.untried.pop();
-          const prior = moveHeuristicWeight(work, move, me) + 4;
+          const prior = moveHeuristicWeight(work, move, me) + 6;
           work.applyMove(move);
           const childMoves = work.winner === 0 ? work.legalMoves() : [];
           const child = new MCTSNode(node, move, childMoves, work.toMove, prior);

@@ -15,11 +15,11 @@ let stableChecks = 0;
 const PROGRESS_INTERVAL_MS = 200;
 const CHUNK_MS = 20;
 
-const EARLY_STOP_MIN_FRAC = 0.35;
-const EARLY_STOP_MIN_SIMS = 10000;
-const EARLY_STOP_MIN_SHARE = 0.55;
-const EARLY_STOP_WR_DELTA = 0.008;
-const EARLY_STOP_STABLE_COUNT = 3;
+const EARLY_STOP_MIN_FRAC = 0.4;
+const EARLY_STOP_MIN_SIMS = 15000;
+const EARLY_STOP_MIN_SHARE = 0.45;
+const EARLY_STOP_WR_DELTA = 0.006;
+const EARLY_STOP_STABLE_COUNT = 4;
 
 self.onmessage = (e) => {
   const msg = e.data;
